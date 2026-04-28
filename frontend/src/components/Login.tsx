@@ -9,12 +9,14 @@ const [password, setPassword] = useState('');
 const [fullName, setFullName] = useState('');
 const [isSignup, setIsSignup] = useState(false);
 const [localError, setLocalError] = useState('');
+const [successMessage, setSuccessMessage] = useState('');
 const dispatch = useDispatch<AppDispatch>();
 const navigate = useNavigate();
 const { loading, error } = useSelector((state: RootState) => state.auth);
 const handleSubmit = async (e: React.FormEvent) => {
 e.preventDefault();
 setLocalError('');
+setSuccessMessage('');
 if (!email || !password || (isSignup && !fullName)) {
   setLocalError('Please fill all fields');
   return;
@@ -23,10 +25,12 @@ if (!email || !password || (isSignup && !fullName)) {
 try {
   if (isSignup) {
     await dispatch(signup({ email, password, fullName })).unwrap();
+    setSuccessMessage('Account created successfully! Please login.');
+    setIsSignup(false);
   } else {
     await dispatch(login({ email, password })).unwrap();
+    navigate('/dashboard');
   }
-  navigate('/dashboard');
 } catch (err: any) {
   setLocalError(err || 'Authentication failed');
 }
@@ -41,6 +45,13 @@ return (
 <h1 className="text-3xl font-bold text-blue-600 mb-2">ComplianceBot</h1>
 <p className="text-gray-600">{isSignup ? 'Create Account' : 'Welcome Back'}</p>
 </div>
+      {/* Success Message */}
+      {successMessage && (
+        <div className="mb-6 p-4 bg-green-50 border border-green-200 text-green-700 rounded-lg text-sm">
+          {successMessage}
+        </div>
+      )}
+
       {/* Error Message */}
       {displayError && (
         <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">

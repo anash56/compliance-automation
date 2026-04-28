@@ -12,8 +12,8 @@ export const signup = createAsyncThunk(
       password,
       fullName
     });
-    localStorage.setItem('token', response.data.token);
-    return response.data;
+    // Don't set token for signup, user needs to login
+    return { user: response.data.user };
   }
 );
  
@@ -59,7 +59,7 @@ const authSlice = createSlice({
       .addCase(signup.fulfilled, (state, action) => {
         state.loading = false;
         state.user = action.payload.user;
-        state.token = action.payload.token;
+        // Don't set token for signup
       })
       .addCase(signup.rejected, (state, action) => {
         state.loading = false;
