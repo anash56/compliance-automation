@@ -6,26 +6,37 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
  
 export const signup = createAsyncThunk(
   'auth/signup',
-  async ({ email, password, fullName }: any) => {
-    const response = await axios.post(`${API_URL}/auth/signup`, {
-      email,
-      password,
-      fullName
-    });
-    // Don't set token for signup, user needs to login
-    return { user: response.data.user };
+  async ({ email, password, fullName }: any, { rejectWithValue }) => {
+    try {
+      const response = await axios.post(`${API_URL}/auth/signup`, {
+        email,
+        password,
+        fullName
+      });
+      // Save token if provided by signup endpoint
+      if (response.data.token) {
+        localStorage.setItem('token', response.data.token);
+      }
+      return response.data;
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data?.error || 'Signup failed');
+    }
   }
 );
  
 export const login = createAsyncThunk(
   'auth/login',
-  async ({ email, password }: any) => {
-    const response = await axios.post(`${API_URL}/auth/login`, {
-      email,
-      password
-    });
-    localStorage.setItem('token', response.data.token);
-    return response.data;
+  async ({ email, password }: any, { rejectWithValue }) => {
+    try {
+      const response = await axios.post(`${API_URL}/auth/login`, {
+        email,
+        password
+      });
+      localStorage.setItem('token', response.data.token);
+      return response.data;
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data?.error || 'Login failed');
+    }
   }
 );
  
@@ -59,11 +70,14 @@ const authSlice = createSlice({
       .addCase(signup.fulfilled, (state, action) => {
         state.loading = false;
         state.user = action.payload.user;
-        // Don't set token for signup
+        // Token will be set if signup returns one
+        if (action.payload.token) {
+          state.token = action.payload.token;
+        }
       })
       .addCase(signup.rejected, (state, action) => {
         state.loading = false;
-        state.error = action.error.message || 'Signup failed';
+        state.error = action.payload as string || 'Signup failed';
       })
       .addCase(login.pending, (state) => {
         state.loading = true;
@@ -76,7 +90,7 @@ const authSlice = createSlice({
       })
       .addCase(login.rejected, (state, action) => {
         state.loading = false;
-        state.error = action.error.message || 'Login failed';
+        state.error = action.payload as string || 'Login failed';
       })
       .addCase(logout.fulfilled, (state) => {
         state.user = null;

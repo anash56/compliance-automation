@@ -4,7 +4,7 @@ import { prisma } from '../server';
 import { Decimal } from '@prisma/client/runtime/library';
 
 // TDS rates for different categories
-const TDS_RATES: Record<string, number> = {
+export const TDS_RATES: Record<string, number> = {
   'services': 10,
   'goods': 15,
   'commission': 10,

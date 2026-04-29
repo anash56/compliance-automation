@@ -15,16 +15,39 @@ router.post('/signup', async (req: Request, res: Response) => {
 
     // Validation
     if (!email || !password || !fullName) {
-      return res.status(400).json({ error: 'All fields are required' });
+      return res.status(400).json({ error: 'Email, password, and full name are required' });
+    }
+
+    // Full name validation (only letters, 4-30 characters)
+    const fullNameRegex = /^[a-zA-Z\s]{4,30}$/;
+    if (!fullNameRegex.test(fullName.trim())) {
+      return res.status(400).json({ error: 'Full name must be 4-30 characters with only letters and spaces' });
+    }
+
+    // Email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.toLowerCase())) {
+      return res.status(400).json({ error: 'Invalid email format' });
+    }
+
+    // Password length validation
+    if (password.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+
+    // Password strength validation (must have uppercase, lowercase, number)
+    const passwordStrengthRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d@$!%*?&]{8,}$/;
+    if (!passwordStrengthRegex.test(password)) {
+      return res.status(400).json({ error: 'Password must contain at least one uppercase letter, one lowercase letter, and one number' });
     }
 
     // Check if user exists
     const existingUser = await prisma.user.findUnique({
-      where: { email }
+      where: { email: email.toLowerCase() }
     });
 
     if (existingUser) {
-      return res.status(400).json({ error: 'User already exists' });
+      return res.status(400).json({ error: 'Email already registered' });
     }
 
     // Hash password
@@ -34,14 +57,14 @@ router.post('/signup', async (req: Request, res: Response) => {
     // Create user
     const user = await prisma.user.create({
       data: {
-        email,
+        email: email.toLowerCase(),
         password: hashedPassword,
-        fullName,
+        fullName: fullName.trim(),
         role: 'business_owner'
       }
     });
 
-    // Generate JWT token
+    // Generate JWT token (for immediate login after signup)
     const token = jwt.sign(
       { userId: user.id },
       process.env.JWT_SECRET || 'secret',
@@ -60,7 +83,7 @@ router.post('/signup', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Signup error:', error);
-    res.status(500).json({ error: 'Failed to create user' });
+    res.status(500).json({ error: 'Failed to create account. Please try again.' });
   }
 });
 
@@ -74,9 +97,9 @@ router.post('/login', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
-    // Find user
+    // Find user (case-insensitive email)
     const user = await prisma.user.findUnique({
-      where: { email }
+      where: { email: email.toLowerCase() }
     });
 
     if (!user) {
@@ -108,7 +131,7 @@ router.post('/login', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({ error: 'Login failed' });
+    res.status(500).json({ error: 'Login failed. Please try again.' });
   }
 });
 

@@ -2,7 +2,7 @@
 
 import express, { Router, Request, Response } from 'express';
 import auth from '../middleware/auth';
-import tdsService from '../services/tdsService';
+import tdsService, { TDS_RATES } from '../services/tdsService';
 import { prisma } from '../server';
 
 const router: Router = express.Router();
@@ -56,9 +56,9 @@ router.post('/records', auth, async (req: Request, res: Response) => {
       success: true,
       tdsRecord,
       tdsCalculated: {
-        rate: tdsService['TDS_RATES']?.[category] || 10,
-        amount: (Number(paymentAmount) * ((tdsService['TDS_RATES']?.[category] || 10) / 100)).toFixed(2),
-        netPayment: (Number(paymentAmount) - (Number(paymentAmount) * ((tdsService['TDS_RATES']?.[category] || 10) / 100))).toFixed(2)
+        rate: TDS_RATES[category] || 10,
+        amount: (Number(paymentAmount) * ((TDS_RATES[category] || 10) / 100)).toFixed(2),
+        netPayment: (Number(paymentAmount) - (Number(paymentAmount) * ((TDS_RATES[category] || 10) / 100))).toFixed(2)
       }
     });
   } catch (error) {
