@@ -22,10 +22,10 @@ const verifyCompanyOwnership = async (companyId: string, userId: string) => {
 // Create invoice
 router.post('/', auth, async (req: Request, res: Response) => {
   try {
-    const { companyId, vendorName, vendorGst, amount, gstRate, invoiceDate, state, invoiceType, hsnCode, notes } = req.body;
+    const { companyId, invoiceNumber, vendorName, vendorGst, amount, gstRate, invoiceDate, state, invoiceType, hsnCode, notes } = req.body;
 
     // Validation
-    if (!companyId || !vendorName || !amount || !gstRate) {
+    if (!companyId || !invoiceNumber || !vendorName || !amount || !gstRate) {
       return res.status(400).json({ error: 'Required fields missing' });
     }
 
@@ -45,6 +45,7 @@ router.post('/', auth, async (req: Request, res: Response) => {
     const invoice = await prisma.invoice.create({
       data: {
         companyId,
+        invoiceNumber,
         vendorName,
         vendorGst: vendorGst || null,
         amount: new Decimal(amountNum),

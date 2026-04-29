@@ -18,7 +18,7 @@ Automate your GST & TDS compliance, save time, and ensure accuracy for your SME
 </p>
     <div className="space-y-4">
       <button
-        onClick={() => navigate('/login')}
+        onClick={() => navigate('/signup')}
         className="px-8 py-4 bg-white text-blue-600 rounded-lg font-bold hover:bg-gray-100 text-lg transition duration-200 shadow-lg"
       >
         Get Started Free

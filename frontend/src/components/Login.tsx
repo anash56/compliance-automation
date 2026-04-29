@@ -1,18 +1,25 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { login, signup } from '../store/slices/authSlice';
 import { AppDispatch, RootState } from '../store';
 export default function Login() {
 const [email, setEmail] = useState('');
 const [password, setPassword] = useState('');
 const [fullName, setFullName] = useState('');
-const [isSignup, setIsSignup] = useState(false);
 const [localError, setLocalError] = useState('');
 const [successMessage, setSuccessMessage] = useState('');
 const dispatch = useDispatch<AppDispatch>();
 const navigate = useNavigate();
+const location = useLocation();
 const { loading, error } = useSelector((state: RootState) => state.auth);
+
+const isSignup = location.pathname === '/signup';
+
+useEffect(() => {
+  setLocalError('');
+  setSuccessMessage('');
+}, [location.pathname]);
 const handleSubmit = async (e: React.FormEvent) => {
 e.preventDefault();
 setLocalError('');
@@ -26,7 +33,7 @@ try {
   if (isSignup) {
     await dispatch(signup({ email, password, fullName })).unwrap();
     setSuccessMessage('Account created successfully! Please login.');
-    setIsSignup(false);
+    navigate('/login');
   } else {
     await dispatch(login({ email, password })).unwrap();
     navigate('/dashboard');
@@ -116,7 +123,11 @@ return (
         {isSignup ? 'Already have an account? ' : "Don't have an account? "}
         <button
           onClick={() => {
-            setIsSignup(!isSignup);
+            if (isSignup) {
+              navigate('/login');
+            } else {
+              navigate('/signup');
+            }
             setLocalError('');
           }}
           className="text-blue-600 font-semibold hover:underline"

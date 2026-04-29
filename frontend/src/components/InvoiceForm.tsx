@@ -7,6 +7,7 @@ onSuccess?: () => void;
 }
 export default function InvoiceForm({ companyId, onSuccess }: InvoiceFormProps) {
 const [formData, setFormData] = useState({
+invoiceNumber: '',
 vendorName: '',
 vendorGst: '',
 amount: '',
@@ -56,6 +57,7 @@ setSuccess(false);
 try {
   const response = await api.post('/invoices', {
     companyId,
+    invoiceNumber: formData.invoiceNumber,
     vendorName: formData.vendorName,
     vendorGst: formData.vendorGst || null,
     amount: parseFloat(formData.amount),
@@ -71,6 +73,7 @@ try {
     setSuccess(true);
     // Reset form
     setFormData({
+      invoiceNumber: '',
       vendorName: '',
       vendorGst: '',
       amount: '',
@@ -110,6 +113,21 @@ return (
   )}
 
   <div className="grid grid-cols-2 gap-4 mb-4">
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-2">
+        Invoice Number *
+      </label>
+      <input
+        type="text"
+        name="invoiceNumber"
+        value={formData.invoiceNumber}
+        onChange={handleInputChange}
+        placeholder="INV-001"
+        required
+        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+      />
+    </div>
+
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-2">
         Vendor Name *
