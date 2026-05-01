@@ -143,4 +143,67 @@ router.put('/:id', auth, async (req: Request, res: Response) => {
   }
 });
 
+// Get dashboard stats
+router.get('/stats/dashboard', auth, async (req: Request, res: Response) => {
+  try {
+    // Get current month/year
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+
+    // Count GST returns filed this year
+    const gstFiledCount = await prisma.gSTReturn.count({
+      where: {
+        company: { userId: req.userId },
+        year: currentYear,
+        OR: [
+          { gstr1Status: 'submitted' },
+          { gstr3bStatus: 'submitted' }
+        ]
+      }
+    });
+
+    // Count TDS returns filed this year
+    const tdsFiledCount = await prisma.tDSReturn.count({
+      where: {
+        company: { userId: req.userId },
+        year: currentYear,
+        filingStatus: 'submitted'
+      }
+    });
+
+    // Get total tax payable for current month
+    const invoices = await prisma.invoice.findMany({
+      where: {
+        company: { userId: req.userId },
+        invoiceDate: {
+          gte: new Date(currentYear, currentMonth - 1, 1),
+          lt: new Date(currentYear, currentMonth, 1)
+        }
+      }
+    });
+
+    const totalTaxPayable = invoices.reduce((sum, inv) => {
+      return sum + Number(inv.totalTax);
+    }, 0);
+
+    // Calculate days to GST filing (usually 20th of next month)
+    const dueDate = new Date(currentYear, currentMonth, 20);
+    const daysToFiling = Math.ceil((dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
+    res.json({
+      success: true,
+      stats: {
+        gstFiled: gstFiledCount,
+        tdsFiled: tdsFiledCount,
+        totalTaxPayable: totalTaxPayable.toFixed(2),
+        daysToFiling: Math.max(daysToFiling, 0)
+      }
+    });
+  } catch (error) {
+    console.error('Get dashboard stats error:', error);
+    res.status(500).json({ error: 'Failed to fetch dashboard stats' });
+  }
+});
+
 export default router;

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { login, signup } from '../store/slices/authSlice';
+import { login, signup, clearError } from '../store/slices/authSlice';
 import { AppDispatch, RootState } from '../store';
 
 // Password strength checker
@@ -52,7 +52,8 @@ export default function Login() {
     setLocalError('');
     setSuccessMessage('');
     setValidationErrors({});
-  }, [location.pathname]);
+    dispatch(clearError());
+  }, [location.pathname, dispatch]);
 
   // Real-time validation for signup
   useEffect(() => {
@@ -81,6 +82,7 @@ export default function Login() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    dispatch(clearError());
     setLocalError('');
     setSuccessMessage('');
 

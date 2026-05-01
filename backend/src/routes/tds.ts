@@ -19,12 +19,21 @@ const verifyCompanyOwnership = async (companyId: string, userId: string) => {
   return true;
 };
 
+const getFinancialQuarter = (date: Date) => {
+  const month = date.getMonth() + 1;
+
+  if (month >= 4 && month <= 6) return 1;
+  if (month >= 7 && month <= 9) return 2;
+  if (month >= 10 && month <= 12) return 3;
+  return 4;
+};
+
 // Create TDS record
 router.post('/records', auth, async (req: Request, res: Response) => {
   try {
     const { companyId, vendorName, vendorPan, paymentDate, paymentAmount, category } = req.body;
 
-    if (!companyId || !vendorName || !paymentAmount || !category) {
+    if (!companyId || !vendorName || !paymentDate || !paymentAmount || !category) {
       return res.status(400).json({ error: 'Required fields missing' });
     }
 
@@ -36,8 +45,7 @@ router.post('/records', auth, async (req: Request, res: Response) => {
 
     // Calculate quarter and year
     const date = new Date(paymentDate);
-    const month = date.getMonth() + 1;
-    const quarter = Math.ceil(month / 3);
+    const quarter = getFinancialQuarter(date);
     const year = date.getFullYear();
 
     // Create TDS record
@@ -64,6 +72,38 @@ router.post('/records', auth, async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Create TDS record error:', error);
     res.status(500).json({ error: 'Failed to create TDS record' });
+  }
+});
+
+// Delete TDS record
+router.delete('/records/:id', auth, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const record = await prisma.tDSRecord.findUnique({
+      where: { id }
+    });
+
+    if (!record) {
+      return res.status(404).json({ error: 'TDS record not found' });
+    }
+
+    const isOwner = await verifyCompanyOwnership(record.companyId, req.userId!);
+    if (!isOwner) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    await prisma.tDSRecord.delete({
+      where: { id }
+    });
+
+    res.json({
+      success: true,
+      message: 'TDS record deleted'
+    });
+  } catch (error) {
+    console.error('Delete TDS record error:', error);
+    res.status(500).json({ error: 'Failed to delete TDS record' });
   }
 });
 
@@ -198,6 +238,14 @@ router.post('/form26q/filed', auth, async (req: Request, res: Response) => {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
+    const form26q = await tdsService.generateForm26Q(companyId, quarter, year);
+    await tdsService.saveTDSReturn(
+      companyId,
+      quarter,
+      year,
+      form26q,
+      form26q.totalTdsDeducted
+    );
     const tdsReturn = await tdsService.markForm26QAsFiled(companyId, quarter, year);
 
     res.json({

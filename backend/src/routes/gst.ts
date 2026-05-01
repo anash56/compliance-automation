@@ -118,6 +118,9 @@ router.post('/gstr1/filed', auth, async (req: Request, res: Response) => {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
+    const gstr1 = await gstService.generateGSTR1(companyId, month, year);
+    const gstr3b = await gstService.generateGSTR3B(companyId, month, year);
+    await gstService.saveGSTReturn(companyId, month, year, gstr1, gstr3b);
     const gstReturn = await gstService.markAsFiledGSTR1(companyId, month, year);
 
     res.json({
@@ -146,6 +149,9 @@ router.post('/gstr3b/filed', auth, async (req: Request, res: Response) => {
       return res.status(403).json({ error: 'Unauthorized' });
     }
 
+    const gstr1 = await gstService.generateGSTR1(companyId, month, year);
+    const gstr3b = await gstService.generateGSTR3B(companyId, month, year);
+    await gstService.saveGSTReturn(companyId, month, year, gstr1, gstr3b);
     const gstReturn = await gstService.markAsFiledGSTR3B(companyId, month, year);
 
     res.json({

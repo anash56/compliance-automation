@@ -1,25 +1,30 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import axios from 'axios';
+import api from '../../services/api';
 import { User } from '../../types';
- 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
+const getAuthErrorMessage = (error: any, fallback: string) => {
+  if (!error.response && error.message === 'Network Error') {
+    return 'Cannot reach the backend API. Make sure the backend is running on port 5000 and the frontend URL is allowed by CORS.';
+  }
+
+  return error.response?.data?.error || error.message || fallback;
+};
  
 export const signup = createAsyncThunk(
   'auth/signup',
   async ({ email, password, fullName }: any, { rejectWithValue }) => {
     try {
-      const response = await axios.post(`${API_URL}/auth/signup`, {
+      const response = await api.post('/auth/signup', {
         email,
         password,
         fullName
       });
-      // Save token if provided by signup endpoint
       if (response.data.token) {
         localStorage.setItem('token', response.data.token);
       }
       return response.data;
     } catch (error: any) {
-      return rejectWithValue(error.response?.data?.error || 'Signup failed');
+      return rejectWithValue(getAuthErrorMessage(error, 'Signup failed'));
     }
   }
 );
@@ -28,14 +33,14 @@ export const login = createAsyncThunk(
   'auth/login',
   async ({ email, password }: any, { rejectWithValue }) => {
     try {
-      const response = await axios.post(`${API_URL}/auth/login`, {
+      const response = await api.post('/auth/login', {
         email,
         password
       });
       localStorage.setItem('token', response.data.token);
       return response.data;
     } catch (error: any) {
-      return rejectWithValue(error.response?.data?.error || 'Login failed');
+      return rejectWithValue(getAuthErrorMessage(error, 'Login failed'));
     }
   }
 );
@@ -69,15 +74,15 @@ const authSlice = createSlice({
       })
       .addCase(signup.fulfilled, (state, action) => {
         state.loading = false;
+        state.error = null;
         state.user = action.payload.user;
-        // Token will be set if signup returns one
         if (action.payload.token) {
           state.token = action.payload.token;
         }
       })
       .addCase(signup.rejected, (state, action) => {
         state.loading = false;
-        state.error = action.payload as string || 'Signup failed';
+        state.error = (action.payload as string) || action.error.message || 'Signup failed';
       })
       .addCase(login.pending, (state) => {
         state.loading = true;
@@ -85,12 +90,13 @@ const authSlice = createSlice({
       })
       .addCase(login.fulfilled, (state, action) => {
         state.loading = false;
+        state.error = null;
         state.user = action.payload.user;
         state.token = action.payload.token;
       })
       .addCase(login.rejected, (state, action) => {
         state.loading = false;
-        state.error = action.payload as string || 'Login failed';
+        state.error = (action.payload as string) || action.error.message || 'Login failed';
       })
       .addCase(logout.fulfilled, (state) => {
         state.user = null;

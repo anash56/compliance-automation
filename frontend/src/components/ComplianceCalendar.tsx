@@ -1,5 +1,3 @@
-import React from 'react';
-
 export default function ComplianceCalendar() {
 const now = new Date();
 const currentMonth = now.getMonth();

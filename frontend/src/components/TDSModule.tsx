@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import api from '../services/api';
 interface TDSModuleProps {
 companyId: string;
@@ -11,7 +11,7 @@ const [form26q, setForm26q] = useState<any>(null);
 const [loading, setLoading] = useState(false);
 const [showForm, setShowForm] = useState(false);
 const [error, setError] = useState('');
-const [success, setSuccess] = useState(false);
+const [success, setSuccess] = useState('');
 const [formData, setFormData] = useState({
 vendorName: '',
 vendorPan: '',
@@ -19,6 +19,25 @@ paymentDate: new Date().toISOString().split('T')[0],
 paymentAmount: '',
 category: 'services'
 });
+
+// Fetch TDS records when company or quarter/year changes
+useEffect(() => {
+  fetchTDSRecords();
+}, [companyId, quarter, year]);
+
+const fetchTDSRecords = async () => {
+  try {
+    const response = await api.get(`/tds/records/${companyId}`, {
+      params: { quarter, year }
+    });
+    if (response.data.success) {
+      setTdsRecords(response.data.records);
+    }
+  } catch (error) {
+    console.error('Failed to fetch TDS records:', error);
+  }
+};
+
 const TDS_RATES: Record<string, number> = {
 services: 10,
 goods: 15,
@@ -35,7 +54,7 @@ const handleAddPayment = async (e: React.FormEvent) => {
 e.preventDefault();
 setLoading(true);
 setError('');
-setSuccess(false);
+setSuccess('');
 try {
   const response = await api.post('/tds/records', {
     companyId,
@@ -47,7 +66,8 @@ try {
   });
 
   if (response.data.success) {
-    setTdsRecords([...tdsRecords, response.data.tdsRecord]);
+    fetchTDSRecords();
+    setForm26q(null);
     setFormData({
       vendorName: '',
       vendorPan: '',
@@ -56,8 +76,8 @@ try {
       category: 'services'
     });
     setShowForm(false);
-    setSuccess(true);
-    setTimeout(() => setSuccess(false), 3000);
+    setSuccess('Payment recorded successfully.');
+    setTimeout(() => setSuccess(''), 3000);
   }
 } catch (err: any) {
   setError(err.response?.data?.error || 'Failed to record payment');
@@ -65,9 +85,29 @@ try {
   setLoading(false);
 }
 };
+const handleDeleteRecord = async (recordId: string) => {
+if (!window.confirm('Delete this TDS payment record?')) return;
+setLoading(true);
+setError('');
+setSuccess('');
+try {
+  const response = await api.delete(`/tds/records/${recordId}`);
+  if (response.data.success) {
+    setTdsRecords(tdsRecords.filter(record => record.id !== recordId));
+    setForm26q(null);
+    setSuccess('TDS payment record deleted.');
+    setTimeout(() => setSuccess(''), 3000);
+  }
+} catch (err: any) {
+  setError(err.response?.data?.error || 'Failed to delete TDS record');
+} finally {
+  setLoading(false);
+}
+};
 const handleGenerateForm26Q = async () => {
 setLoading(true);
 setError('');
+setSuccess('');
 try {
   const response = await api.post('/tds/form26q/generate', {
     companyId,
@@ -80,6 +120,26 @@ try {
   }
 } catch (err: any) {
   setError(err.response?.data?.error || 'Failed to generate Form 26Q');
+} finally {
+  setLoading(false);
+}
+};
+const handleMarkForm26QFiled = async () => {
+setLoading(true);
+setError('');
+setSuccess('');
+try {
+  const response = await api.post('/tds/form26q/filed', {
+    companyId,
+    quarter,
+    year
+  });
+
+  if (response.data.success) {
+    setSuccess('Form 26Q marked as filed. Refresh the dashboard to see the updated count.');
+  }
+} catch (err: any) {
+  setError(err.response?.data?.error || 'Failed to mark Form 26Q as filed');
 } finally {
   setLoading(false);
 }
@@ -139,7 +199,7 @@ className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:
 
   {success && (
     <div className="p-4 bg-green-50 border border-green-200 text-green-700 rounded-lg">
-      ✓ Payment recorded successfully!
+      {success}
     </div>
   )}
 
@@ -283,6 +343,7 @@ className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:
               <th className="text-right py-3 font-semibold text-gray-700">TDS %</th>
               <th className="text-right py-3 font-semibold text-gray-700">TDS Deducted</th>
               <th className="text-right py-3 font-semibold text-gray-700">Net Payment</th>
+              <th className="text-right py-3 font-semibold text-gray-700">Action</th>
             </tr>
           </thead>
           <tbody>
@@ -290,11 +351,21 @@ className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:
               <tr key={record.id} className={idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
                 <td className="py-3">{record.vendorName}</td>
                 <td className="py-3">{new Date(record.paymentDate).toLocaleDateString()}</td>
-                <td className="text-right py-3">₹{record.paymentAmount.toLocaleString()}</td>
+                <td className="text-right py-3">₹{Number(record.paymentAmount).toLocaleString()}</td>
                 <td className="text-center py-3 capitalize">{record.category}</td>
                 <td className="text-right py-3">{record.tdsRate}%</td>
-                <td className="text-right py-3 font-semibold text-red-600">₹{record.tdsDeducted.toLocaleString()}</td>
-                <td className="text-right py-3 font-semibold text-green-600">₹{record.paymentMade.toLocaleString()}</td>
+                <td className="text-right py-3 font-semibold text-red-600">₹{Number(record.tdsDeducted).toLocaleString()}</td>
+                <td className="text-right py-3 font-semibold text-green-600">₹{Number(record.paymentMade).toLocaleString()}</td>
+                <td className="text-right py-3">
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteRecord(record.id)}
+                    disabled={loading}
+                    className="px-3 py-1 text-xs font-semibold text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 disabled:bg-gray-100 disabled:text-gray-400"
+                  >
+                    Delete
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -302,16 +373,17 @@ className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:
             <tr className="border-t-2 border-gray-300 bg-gray-50">
               <td colSpan={2} className="py-3 font-semibold">Total</td>
               <td className="text-right py-3 font-semibold">
-                ₹{tdsRecords.reduce((sum, r) => sum + r.paymentAmount, 0).toLocaleString()}
+                ₹{tdsRecords.reduce((sum, r) => sum + Number(r.paymentAmount), 0).toLocaleString()}
               </td>
               <td colSpan={1}></td>
               <td></td>
               <td className="text-right py-3 font-semibold text-red-600">
-                ₹{tdsRecords.reduce((sum, r) => sum + r.tdsDeducted, 0).toLocaleString()}
+                ₹{tdsRecords.reduce((sum, r) => sum + Number(r.tdsDeducted), 0).toLocaleString()}
               </td>
               <td className="text-right py-3 font-semibold text-green-600">
-                ₹{tdsRecords.reduce((sum, r) => sum + r.paymentMade, 0).toLocaleString()}
+                ₹{tdsRecords.reduce((sum, r) => sum + Number(r.paymentMade), 0).toLocaleString()}
               </td>
+              <td></td>
             </tr>
           </tfoot>
         </table>
@@ -380,12 +452,21 @@ className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:
         </div>
       </div>
 
-      <button
-        onClick={downloadForm26Q}
-        className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-semibold transition"
-      >
-        📥 Download Form 26Q
-      </button>
+      <div className="flex gap-3">
+        <button
+          onClick={downloadForm26Q}
+          className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-semibold transition"
+        >
+          📥 Download Form 26Q
+        </button>
+        <button
+          onClick={handleMarkForm26QFiled}
+          disabled={loading}
+          className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-400 font-semibold transition"
+        >
+          {loading ? 'Saving...' : 'Mark Form 26Q Filed'}
+        </button>
+      </div>
     </div>
   )}
 </div>

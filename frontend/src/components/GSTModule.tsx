@@ -12,9 +12,11 @@ const [gstr1, setGstr1] = useState<any>(null);
 const [gstr3b, setGstr3b] = useState<any>(null);
 const [loading, setLoading] = useState(false);
 const [error, setError] = useState('');
+const [success, setSuccess] = useState('');
 const handleGenerateGSTR1 = async () => {
 setLoading(true);
 setError('');
+setSuccess('');
 try {
   const response = await api.post('/gst/gstr1/generate', {
     companyId,
@@ -35,6 +37,7 @@ try {
 const handleGenerateGSTR3B = async () => {
 setLoading(true);
 setError('');
+setSuccess('');
 try {
   const response = await api.post('/gst/gstr3b/generate', {
     companyId,
@@ -48,6 +51,46 @@ try {
   }
 } catch (err: any) {
   setError(err.response?.data?.error || 'Failed to generate GSTR-3B');
+} finally {
+  setLoading(false);
+}
+};
+const handleMarkGSTR1Filed = async () => {
+setLoading(true);
+setError('');
+setSuccess('');
+try {
+  const response = await api.post('/gst/gstr1/filed', {
+    companyId,
+    month,
+    year
+  });
+
+  if (response.data.success) {
+    setSuccess('GSTR-1 marked as filed. Refresh the dashboard to see the updated count.');
+  }
+} catch (err: any) {
+  setError(err.response?.data?.error || 'Failed to mark GSTR-1 as filed');
+} finally {
+  setLoading(false);
+}
+};
+const handleMarkGSTR3BFiled = async () => {
+setLoading(true);
+setError('');
+setSuccess('');
+try {
+  const response = await api.post('/gst/gstr3b/filed', {
+    companyId,
+    month,
+    year
+  });
+
+  if (response.data.success) {
+    setSuccess('GSTR-3B marked as filed. Refresh the dashboard to see the updated count.');
+  }
+} catch (err: any) {
+  setError(err.response?.data?.error || 'Failed to mark GSTR-3B as filed');
 } finally {
   setLoading(false);
 }
@@ -114,6 +157,12 @@ className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:
   {error && (
     <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg">
       {error}
+    </div>
+  )}
+
+  {success && (
+    <div className="p-4 bg-green-50 border border-green-200 text-green-700 rounded-lg">
+      {success}
     </div>
   )}
 
@@ -224,6 +273,13 @@ className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:
           {loading ? 'Generating...' : '→ Generate GSTR-3B'}
         </button>
         <button
+          onClick={handleMarkGSTR1Filed}
+          disabled={loading}
+          className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-400 font-semibold transition"
+        >
+          {loading ? 'Saving...' : 'Mark GSTR-1 Filed'}
+        </button>
+        <button
           onClick={() => {
             setGstr1(null);
             setGstr3b(null);
@@ -263,12 +319,21 @@ className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:
         <p className="text-sm text-gray-700 font-semibold mt-2">Net Amount to Pay: ₹{gstr3b.netPayable.toLocaleString()}</p>
       </div>
 
-      <button
-        onClick={downloadGSTR3B}
-        className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-semibold transition"
-      >
-        📥 Download GSTR-3B
-      </button>
+      <div className="flex gap-3">
+        <button
+          onClick={downloadGSTR3B}
+          className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-semibold transition"
+        >
+          📥 Download GSTR-3B
+        </button>
+        <button
+          onClick={handleMarkGSTR3BFiled}
+          disabled={loading}
+          className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-400 font-semibold transition"
+        >
+          {loading ? 'Saving...' : 'Mark GSTR-3B Filed'}
+        </button>
+      </div>
     </div>
   )}
 </div>

@@ -43,6 +43,17 @@ setSelectedCompany(company);
 fetchInvoices(company.id);
 setActiveTab('invoices');
 };
+const handleDeleteInvoice = async (invoiceId: string) => {
+if (!window.confirm('Delete this invoice?')) return;
+try {
+await api.delete(`/invoices/${invoiceId}`);
+if (selectedCompany) {
+fetchInvoices(selectedCompany.id);
+}
+} catch (error: any) {
+alert(error.response?.data?.error || 'Failed to delete invoice');
+}
+};
 return (
 <>
 <Navbar />
@@ -112,7 +123,16 @@ return (
                   <div className="space-y-3 max-h-96 overflow-y-auto">
                     {invoices.slice(0, 10).map(inv => (
                       <div key={inv.id} className="p-3 bg-gray-50 rounded-lg border border-gray-200 hover:border-blue-300 transition">
-                        <p className="text-sm font-semibold text-gray-900">{inv.vendorName}</p>
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-sm font-semibold text-gray-900">{inv.vendorName}</p>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteInvoice(inv.id)}
+                            className="px-2 py-1 text-xs font-semibold text-red-700 bg-red-50 border border-red-200 rounded hover:bg-red-100"
+                          >
+                            Delete
+                          </button>
+                        </div>
                         <p className="text-xs text-gray-600 mt-1">₹{inv.amount.toLocaleString()} @ {inv.gstRate}%</p>
                         <p className="text-xs text-gray-500 mt-1">{new Date(inv.invoiceDate).toLocaleDateString()}</p>
                         <p className="text-xs text-blue-600 mt-1 font-semibold">Tax: ₹{inv.totalTax.toLocaleString()}</p>
