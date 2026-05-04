@@ -21,6 +21,7 @@ const [searchQuery, setSearchQuery] = useState('');
 const [currentPage, setCurrentPage] = useState(1);
 const [totalPages, setTotalPages] = useState(1);
 const [selectedInvoices, setSelectedInvoices] = useState<Set<string>>(new Set());
+const [editingInvoice, setEditingInvoice] = useState<any>(null);
 const itemsPerPage = 10;
 const { showToast } = useToast();
 
@@ -86,18 +87,14 @@ const toggleInvoiceSelection = (id: string) => {
   }
   setSelectedInvoices(newSelection);
 };
-const toggleSelectAllInvoices = () => {
-  if (selectedInvoices.size === invoices.length && invoices.length > 0) {
-    setSelectedInvoices(new Set());
-  } else {
-    setSelectedInvoices(new Set(invoices.map(i => i.id)));
-  }
-};
 const handleDeleteInvoice = async (invoiceId: string) => {
 if (!window.confirm('Delete this invoice?')) return;
 try {
 await api.delete(`/invoices/${invoiceId}`);
 if (selectedCompany) {
+        if (editingInvoice?.id === invoiceId) {
+          setEditingInvoice(null);
+        }
         fetchInvoices(selectedCompany.id, currentPage, searchQuery);
 }
 showToast('Invoice deleted successfully');
@@ -195,7 +192,12 @@ return (
                   <InvoiceForm
                     companyId={selectedCompany.id}
                     companyState={selectedCompany.state}
-                    onSuccess={() => fetchInvoices(selectedCompany.id, currentPage, searchQuery)}
+                    editData={editingInvoice}
+                    onCancelEdit={() => setEditingInvoice(null)}
+                    onSuccess={() => {
+                      setEditingInvoice(null);
+                      fetchInvoices(selectedCompany.id, currentPage, searchQuery);
+                    }}
                   />
                 ) : (
                   <div className="bg-white p-8 rounded-lg border border-gray-200 text-center">
@@ -208,29 +210,18 @@ return (
                   <div className="flex justify-between items-center mb-4">
                     <div className="flex items-center gap-3">
                       <h3 className="text-lg font-semibold">Invoices</h3>
-                      {canEdit && invoices.length > 0 && (
-                        <label className="flex items-center gap-1 text-sm text-gray-600 cursor-pointer">
-                          <input 
-                            type="checkbox" 
-                            checked={selectedInvoices.size === invoices.length && invoices.length > 0} 
-                            onChange={toggleSelectAllInvoices}
-                            className="rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
-                          />
-                          Select All
-                        </label>
-                      )}
                     </div>
                     <div className="flex gap-2">
                       {canEdit && selectedInvoices.size > 0 && (
                         <button
                           onClick={handleDeleteSelectedInvoices}
                           disabled={loading}
-                          className="px-3 py-1 text-xs font-semibold text-red-700 bg-red-50 border border-red-200 rounded hover:bg-red-100 disabled:opacity-50 transition"
+                          className="px-3 py-1 text-xs font-semibold text-white bg-red-600 rounded shadow hover:bg-red-700 disabled:opacity-50 transition"
                         >
                           Delete Selected ({selectedInvoices.size})
                         </button>
                       )}
-                      {canEdit && invoices.length > 0 && (
+                      {canEdit && invoices.length > 0 && selectedInvoices.size === 0 && (
                         <button
                           onClick={handleDeleteAllInvoices}
                           disabled={loading}
@@ -271,15 +262,26 @@ return (
                               <p className="text-xs text-gray-500 mt-1">{new Date(inv.invoiceDate).toLocaleDateString()}</p>
                               <p className="text-xs text-blue-600 mt-1 font-semibold">Tax: INR {inv.totalTax.toLocaleString()}</p>
                             </div>
-                            {canEdit && (
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteInvoice(inv.id)}
-                                className="px-2 py-1 text-xs font-semibold text-red-700 bg-red-50 border border-red-200 rounded hover:bg-red-100 shrink-0"
-                              >
-                                Delete
-                              </button>
-                            )}
+                            <div className="flex gap-2">
+                              {canEdit && (
+                                <button
+                                  type="button"
+                                  onClick={() => { setEditingInvoice(inv); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                                  className="px-2 py-1 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 shrink-0 transition"
+                                >
+                                  Edit
+                                </button>
+                              )}
+                              {canEdit && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteInvoice(inv.id)}
+                                  className="px-2 py-1 text-xs font-semibold text-red-700 bg-red-50 border border-red-200 rounded hover:bg-red-100 shrink-0 transition"
+                                >
+                                  Delete
+                                </button>
+                              )}
+                            </div>
                           </div>
                         </div>
                       ))

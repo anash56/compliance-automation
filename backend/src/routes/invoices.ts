@@ -67,6 +67,61 @@ router.post('/', auth, authorizeMember(['OWNER', 'ADMIN', 'EDITOR']), async (req
   }
 });
 
+// Update an invoice
+router.put('/:id', auth, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { vendorName, amount, gstRate, invoiceDate, state, invoiceType, hsnCode, notes, invoiceNumber } = req.body;
+
+    const invoice = await prisma.invoice.findUnique({ where: { id }, select: { companyId: true, state: true, invoiceType: true } });
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
+
+    // Manually check permission securely
+    const membership = await prisma.companyMember.findUnique({
+      where: { userId_companyId: { userId: req.userId!, companyId: invoice.companyId } },
+    });
+    if (!membership || !['OWNER', 'ADMIN', 'EDITOR'].includes(membership.role)) {
+      return res.status(403).json({ error: 'You do not have permission to edit this invoice.' });
+    }
+
+    const company = await prisma.company.findUnique({ where: { id: invoice.companyId } });
+    const companyState = (company?.state || '').trim().toLowerCase();
+    const invoiceState = (state || invoice.state || '').trim().toLowerCase();
+    const invType = invoiceType || invoice.invoiceType || 'B2B';
+
+    const totalTax = (Number(amount) * Number(gstRate)) / 100;
+    const isInterstate = invType === 'IMPORT' || (invoiceState && companyState && invoiceState !== companyState);
+
+    const sgst = isInterstate ? 0 : totalTax / 2;
+    const cgst = isInterstate ? 0 : totalTax / 2;
+    const igst = isInterstate ? totalTax : 0;
+
+    const updatedInvoice = await prisma.invoice.update({
+      where: { id },
+      data: {
+        invoiceNumber,
+        vendorName,
+        amount: Number(amount),
+        gstRate: Number(gstRate),
+        sgst,
+        cgst,
+        igst,
+        totalTax,
+        invoiceDate: new Date(invoiceDate),
+        invoiceType: invType,
+        state: state || 'Local',
+        hsnCode: hsnCode || null,
+        notes: notes || null
+      }
+    });
+
+    res.json({ success: true, invoice: updatedInvoice });
+  } catch (error) {
+    console.error('Update invoice error:', error);
+    res.status(500).json({ error: 'Failed to update invoice' });
+  }
+});
+
 // Get invoices for a company
 router.get('/:companyId', auth, authorizeMember(['OWNER', 'ADMIN', 'EDITOR', 'VIEWER']), async (req: Request, res: Response) => {
   try {

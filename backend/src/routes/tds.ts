@@ -118,6 +118,54 @@ router.post('/records', auth, authorizeMember(['OWNER', 'ADMIN', 'EDITOR']), asy
   }
 });
 
+// Update TDS record
+router.put('/records/:id', auth, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { vendorName, vendorPan, paymentDate, paymentAmount, category } = req.body;
+
+    const record = await prisma.tDSRecord.findUnique({ where: { id } });
+    if (!record) return res.status(404).json({ error: 'TDS record not found' });
+
+    // Manually check permission securely
+    const membership = await prisma.companyMember.findUnique({
+      where: { userId_companyId: { userId: req.userId!, companyId: record.companyId } },
+    });
+    if (!membership || !['OWNER', 'ADMIN', 'EDITOR'].includes(membership.role)) {
+      return res.status(403).json({ error: 'You do not have permission to edit this record.' });
+    }
+
+    const date = new Date(paymentDate);
+    const quarter = getFinancialQuarter(date);
+    const year = getFinancialYear(date);
+
+    const rate = TDS_RATES[category as TDSCategory] || 10;
+    const tdsDeducted = (Number(paymentAmount) * rate) / 100;
+    const paymentMade = Number(paymentAmount) - tdsDeducted;
+
+    const updatedRecord = await prisma.tDSRecord.update({
+      where: { id },
+      data: {
+        vendorName,
+        vendorPan: vendorPan || null,
+        paymentDate: date,
+        paymentAmount: Number(paymentAmount),
+        category,
+        quarter,
+        year,
+        tdsRate: rate,
+        tdsDeducted,
+        paymentMade
+      }
+    });
+
+    res.json({ success: true, record: updatedRecord });
+  } catch (error) {
+    console.error('Update TDS record error:', error);
+    res.status(500).json({ error: 'Failed to update TDS record' });
+  }
+});
+
 // Delete TDS record
 router.delete('/records/:id', auth, async (req: Request, res: Response) => {
   try {

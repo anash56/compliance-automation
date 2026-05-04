@@ -40,6 +40,7 @@ const [success, setSuccess] = useState('');
 const [searchQuery, setSearchQuery] = useState('');
 const [currentPage, setCurrentPage] = useState(1);
 const [selectedRecords, setSelectedRecords] = useState<Set<string>>(new Set());
+const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
 const itemsPerPage = 10;
 const form26qRef = useRef<HTMLDivElement>(null);
 const [formData, setFormData] = useState({
@@ -107,14 +108,21 @@ try {
     return;
   }
 
-  const response = await api.post('/tds/records', {
-    companyId,
+  const payload = {
+    companyId: companyId,
     vendorName: formData.vendorName.trim(),
     vendorPan: formData.vendorPan.trim().toUpperCase() || null,
     paymentDate: formData.paymentDate,
     paymentAmount,
     category: formData.category
-  });
+  };
+
+  let response;
+  if (editingRecordId) {
+    response = await api.put(`/tds/records/${editingRecordId}`, payload);
+  } else {
+    response = await api.post('/tds/records', payload);
+  }
 
   if (response.data.success) {
     const paymentDate = new Date(formData.paymentDate);
@@ -132,7 +140,8 @@ try {
       category: 'services'
     });
     setShowForm(false);
-    setSuccess('Payment recorded successfully.');
+    setEditingRecordId(null);
+    setSuccess(editingRecordId ? 'Payment updated successfully.' : 'Payment recorded successfully.');
     setTimeout(() => setSuccess(''), 3000);
   }
 } catch (err: any) {
@@ -141,6 +150,19 @@ try {
 } finally {
   setLoading(false);
 }
+};
+const handleEditClick = (record: any) => {
+  setFormData({
+    vendorName: record.vendorName,
+    vendorPan: record.vendorPan || '',
+    paymentDate: new Date(record.paymentDate).toISOString().split('T')[0],
+    paymentAmount: record.paymentAmount.toString(),
+    category: record.category
+  });
+  setEditingRecordId(record.id);
+  setFormMode('single');
+  setShowForm(true);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 };
 const handleDeleteRecord = async (recordId: string) => {
 if (!window.confirm('Delete this TDS payment record?')) return;
@@ -152,6 +174,9 @@ try {
   if (response.data.success) {
     setTdsRecords(tdsRecords.filter(record => record.id !== recordId));
     setForm26q(null);
+    if (editingRecordId === recordId) {
+      setEditingRecordId(null);
+    }
     setSuccess('TDS payment record deleted.');
     setTimeout(() => setSuccess(''), 3000);
   }
@@ -189,13 +214,6 @@ const toggleSelection = (id: string) => {
     newSelection.add(id);
   }
   setSelectedRecords(newSelection);
-};
-const toggleSelectAll = () => {
-  if (selectedRecords.size === paginatedRecords.length && paginatedRecords.length > 0) {
-    setSelectedRecords(new Set());
-  } else {
-    setSelectedRecords(new Set(paginatedRecords.map(r => r.id)));
-  }
 };
 const handleDeleteSelectedRecords = async () => {
 if (!window.confirm(`Are you sure you want to delete ${selectedRecords.size} selected records?`)) return;
@@ -376,7 +394,7 @@ className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:
   {showForm && (
     <div className="bg-white p-6 rounded-lg border border-gray-200">
       <div className="flex justify-between items-center mb-6">
-        <h3 className="text-lg font-semibold">Record Vendor Payment (TDS)</h3>
+        <h3 className="text-lg font-semibold">{editingRecordId ? 'Edit Vendor Payment' : 'Record Vendor Payment (TDS)'}</h3>
         <div className="flex bg-gray-100 rounded-lg p-1">
           <button
             type="button"
@@ -528,11 +546,14 @@ className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:
           disabled={loading}
           className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 font-semibold transition"
         >
-          {loading ? 'Recording...' : 'Record Payment'}
+          {loading ? 'Saving...' : editingRecordId ? 'Update Payment' : 'Record Payment'}
         </button>
             <button
               type="button"
-              onClick={() => setShowForm(false)}
+              onClick={() => {
+                setShowForm(false);
+                setEditingRecordId(null);
+              }}
               className="px-6 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500 font-semibold transition"
             >
               Cancel
@@ -558,16 +579,15 @@ className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:
       <div className="flex justify-between items-center mb-4">
         <h3 className="text-lg font-semibold">TDS Payment Records ({filteredRecords.length})</h3>
         <div className="flex items-center gap-2">
-          {canEdit && selectedRecords.size > 0 && (
+          {canEdit && selectedRecords.size > 0 ? (
             <button
               onClick={handleDeleteSelectedRecords}
               disabled={loading}
-              className="px-4 py-2 text-sm font-semibold text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 disabled:opacity-50 transition"
+              className="px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded shadow hover:bg-red-700 disabled:opacity-50 transition"
             >
               Delete Selected ({selectedRecords.size})
             </button>
-          )}
-          {canEdit && paginatedRecords.length > 0 && (
+          ) : canEdit && paginatedRecords.length > 0 ? (
             <button
               onClick={handleDeleteAllRecords}
               disabled={loading}
@@ -575,7 +595,7 @@ className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:
             >
               Delete All
             </button>
-          )}
+          ) : null}
           <input
             type="text"
             placeholder="Search vendor or PAN..."
@@ -590,14 +610,7 @@ className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:
           <thead>
             <tr className="border-b-2 border-gray-300">
               {canEdit && (
-                <th className="py-3 px-2 w-10 text-center">
-                  <input
-                    type="checkbox"
-                    checked={paginatedRecords.length > 0 && selectedRecords.size === paginatedRecords.length}
-                    onChange={toggleSelectAll}
-                    className="rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
-                  />
-                </th>
+                <th className="py-3 px-2 w-10"></th>
               )}
               <th className="text-left py-3 font-semibold text-gray-700">Vendor</th>
               <th className="text-left py-3 font-semibold text-gray-700">Date</th>
@@ -636,15 +649,25 @@ className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:
                 <td className="text-right py-3 font-semibold text-red-600">INR {Number(record.tdsDeducted).toLocaleString()}</td>
                 <td className="text-right py-3 font-semibold text-green-600">INR {Number(record.paymentMade).toLocaleString()}</td>
                 {canEdit && (
-                  <td className="text-right py-3">
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteRecord(record.id)}
-                      disabled={loading}
-                      className="px-3 py-1 text-xs font-semibold text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 disabled:bg-gray-100 disabled:text-gray-400"
-                    >
-                      Delete
-                    </button>
+                  <td className="text-right py-3 space-x-2">
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleEditClick(record)}
+                        disabled={loading}
+                        className="px-3 py-1 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 disabled:bg-gray-100 disabled:text-gray-400 transition"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteRecord(record.id)}
+                        disabled={loading}
+                        className="px-3 py-1 text-xs font-semibold text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 disabled:bg-gray-100 disabled:text-gray-400 transition"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 )}
               </tr>

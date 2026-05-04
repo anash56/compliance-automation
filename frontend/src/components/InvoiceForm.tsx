@@ -1,13 +1,14 @@
-
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import api from '../services/api';
 interface InvoiceFormProps {
 companyId: string;
 companyState: string;
 onSuccess?: () => void;
+editData?: any;
+onCancelEdit?: () => void;
 }
 const normalizeState = (state?: string | null) => (state || '').trim().toLowerCase();
-export default function InvoiceForm({ companyId, companyState, onSuccess }: InvoiceFormProps) {
+export default function InvoiceForm({ companyId, companyState, onSuccess, editData, onCancelEdit }: InvoiceFormProps) {
 const [formMode, setFormMode] = useState<'single' | 'bulk'>('single');
 const [uploadingBulk, setUploadingBulk] = useState(false);
 const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0 });
@@ -32,6 +33,31 @@ total: 0
 const [loading, setLoading] = useState(false);
 const [error, setError] = useState('');
 const [success, setSuccess] = useState(false);
+
+useEffect(() => {
+  if (editData) {
+    setFormData({
+      invoiceNumber: editData.invoiceNumber,
+      vendorName: editData.vendorName,
+      vendorGst: editData.vendorGst || '',
+      amount: editData.amount.toString(),
+      gstRate: editData.gstRate.toString(),
+      invoiceDate: new Date(editData.invoiceDate).toISOString().split('T')[0],
+      state: editData.state,
+      invoiceType: editData.invoiceType,
+      hsnCode: editData.hsnCode || '',
+      notes: editData.notes || ''
+    });
+    setCalculatedTax({
+      sgst: Number(editData.sgst),
+      cgst: Number(editData.cgst),
+      igst: Number(editData.igst),
+      total: Number(editData.totalTax)
+    });
+    setFormMode('single');
+  }
+}, [editData]);
+
 const handleInputChange = (e: any) => {
 const { name, value } = e.target;
 setFormData(prev => ({
@@ -70,8 +96,8 @@ setLoading(true);
 setError('');
 setSuccess(false);
 try {
-  const response = await api.post('/invoices', {
-    companyId,
+  const payload = {
+    companyId: companyId,
     invoiceNumber: formData.invoiceNumber,
     vendorName: formData.vendorName,
     vendorGst: formData.vendorGst || null,
@@ -82,7 +108,14 @@ try {
     invoiceType: formData.invoiceType,
     hsnCode: formData.hsnCode || null,
     notes: formData.notes || null
-  });
+  };
+
+  let response;
+  if (editData) {
+    response = await api.put(`/invoices/${editData.id}`, payload);
+  } else {
+    response = await api.post('/invoices', payload);
+  }
 
   if (response.data.success) {
     setSuccess(true);
@@ -173,7 +206,7 @@ const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
 return (
 <div className="bg-white p-6 rounded-lg border border-gray-200">
   <div className="flex justify-between items-center mb-6">
-    <h3 className="text-xl font-semibold">Add Invoices</h3>
+    <h3 className="text-xl font-semibold">{editData ? 'Edit Invoice' : 'Add Invoices'}</h3>
     <div className="flex bg-gray-100 rounded-lg p-1">
       <button
         type="button"
@@ -200,7 +233,7 @@ return (
 
   {success && (
     <div className="mb-4 p-4 bg-green-50 border border-green-200 text-green-700 rounded-lg">
-      {formMode === 'bulk' ? 'Bulk upload completed successfully.' : 'Invoice created successfully.'}
+      {formMode === 'bulk' ? 'Bulk upload completed successfully.' : editData ? 'Invoice updated successfully.' : 'Invoice created successfully.'}
     </div>
   )}
 
@@ -317,13 +350,24 @@ return (
         </div>
       )}
 
-      <button
-        type="submit"
-        disabled={loading}
-        className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 font-semibold transition duration-200"
-      >
-        {loading ? 'Creating Invoice...' : 'Create Invoice'}
-      </button>
+      <div className="flex gap-3">
+        <button
+          type="submit"
+          disabled={loading}
+          className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 font-semibold transition duration-200"
+        >
+          {loading ? 'Saving...' : editData ? 'Update Invoice' : 'Create Invoice'}
+        </button>
+        {editData && onCancelEdit && (
+          <button
+            type="button"
+            onClick={onCancelEdit}
+            className="px-6 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500 font-semibold transition duration-200"
+          >
+            Cancel
+          </button>
+        )}
+      </div>
     </form>
   )}
 </div>
