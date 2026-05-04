@@ -14,6 +14,7 @@ pan?: string;
 employeesCount?: number;
 businessType?: string;
 createdAt: string;
+userRole?: string;
 }
 export interface Invoice {
 id: string;

@@ -1,23 +1,35 @@
 // src/routes/tds.ts
 
 import express, { Router, Request, Response } from 'express';
+import Joi from 'joi';
 import auth from '../middleware/auth';
-import tdsService, { TDS_RATES } from '../services/tdsService';
+import tdsService, { TDS_RATES, TDSCategory } from '../services/tdsService';
 import { prisma } from '../server';
+import { authorizeMember } from '../middleware/authorize';
 
 const router: Router = express.Router();
+const tdsCategories = Object.keys(TDS_RATES);
+const panPattern = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 
-// Helper to verify company ownership
-const verifyCompanyOwnership = async (companyId: string, userId: string) => {
-  const company = await prisma.company.findUnique({
-    where: { id: companyId }
-  });
+const createTDSRecordSchema = Joi.object({
+  companyId: Joi.string().trim().required(),
+  vendorName: Joi.string().trim().min(2).max(120).required(),
+  vendorPan: Joi.string().trim().uppercase().pattern(panPattern).allow('', null),
+  paymentDate: Joi.date().iso().required(),
+  paymentAmount: Joi.number().positive().precision(2).required(),
+  category: Joi.string().valid(...tdsCategories).required()
+});
 
-  if (!company || company.userId !== userId) {
-    return false;
-  }
-  return true;
-};
+const periodSchema = Joi.object({
+  companyId: Joi.string().trim().required(),
+  quarter: Joi.number().integer().min(1).max(4).required(),
+  year: Joi.number().integer().min(1990).max(2100).required()
+});
+
+const recordQuerySchema = Joi.object({
+  quarter: Joi.number().integer().min(1).max(4),
+  year: Joi.number().integer().min(1990).max(2100)
+}).and('quarter', 'year');
 
 const getFinancialQuarter = (date: Date) => {
   const month = date.getMonth() + 1;
@@ -28,45 +40,76 @@ const getFinancialQuarter = (date: Date) => {
   return 4;
 };
 
+const getFinancialYear = (date: Date) => {
+  const month = date.getMonth() + 1;
+  return month >= 4 ? date.getFullYear() : date.getFullYear() - 1;
+};
+
 // Create TDS record
-router.post('/records', auth, async (req: Request, res: Response) => {
+router.post('/records', auth, authorizeMember(['OWNER', 'ADMIN', 'EDITOR']), async (req: Request, res: Response) => {
   try {
-    const { companyId, vendorName, vendorPan, paymentDate, paymentAmount, category } = req.body;
+    const { value, error: validationError } = createTDSRecordSchema.validate(req.body, {
+      abortEarly: false,
+      stripUnknown: true
+    });
 
-    if (!companyId || !vendorName || !paymentDate || !paymentAmount || !category) {
-      return res.status(400).json({ error: 'Required fields missing' });
+    if (validationError) {
+      return res.status(400).json({
+        error: 'Invalid TDS record',
+        details: validationError.details.map((detail) => detail.message)
+      });
     }
 
-    // Verify ownership
-    const isOwner = await verifyCompanyOwnership(companyId, req.userId!);
-    if (!isOwner) {
-      return res.status(403).json({ error: 'Unauthorized' });
-    }
+    const { companyId, vendorName, vendorPan, paymentDate, paymentAmount, category } = value;
 
     // Calculate quarter and year
     const date = new Date(paymentDate);
     const quarter = getFinancialQuarter(date);
-    const year = date.getFullYear();
+    const year = getFinancialYear(date);
 
     // Create TDS record
-    const tdsRecord = await tdsService.createTDSRecord(
+    const tdsRecord = await tdsService.createTDSRecord({
       companyId,
       vendorName,
-      vendorPan,
-      date,
-      Number(paymentAmount),
-      category,
+      vendorPan: vendorPan || undefined,
+      paymentDate: date,
+      paymentAmount,
+      category: category as TDSCategory,
       quarter,
       year
-    );
+    });
 
+    // Create pending tasks for TDS Return & Payment
+    const qTaskExists = await (prisma as any).complianceTask.findFirst({ where: { companyId, type: 'TDS Return', quarter, year } });
+    if (!qTaskExists) {
+      let dueDate = new Date();
+      if (quarter === 1) dueDate = new Date(year, 6, 31);
+      else if (quarter === 2) dueDate = new Date(year, 9, 31);
+      else if (quarter === 3) dueDate = new Date(year + 1, 0, 31);
+      else if (quarter === 4) dueDate = new Date(year + 1, 4, 31);
+      
+      await (prisma as any).complianceTask.create({ data: { companyId, type: 'TDS Return', desc: `Form 26Q (Q${quarter} FY${year}-${String(year + 1).slice(2)})`, date: dueDate, color: 'purple', status: 'pending', quarter, year } });
+    }
+
+    const m = date.getMonth() + 1;
+    const calYear = date.getFullYear();
+    const nextM = m === 12 ? 1 : m + 1;
+    const nextY = m === 12 ? calYear + 1 : calYear;
+    const monthName = date.toLocaleString('default', { month: 'short' });
+    
+    const pTaskExists = await (prisma as any).complianceTask.findFirst({ where: { companyId, type: 'TDS Payment', month: m, year: calYear } });
+    if (!pTaskExists) {
+      await (prisma as any).complianceTask.create({ data: { companyId, type: 'TDS Payment', desc: `TDS Payment (${monthName} ${calYear})`, date: new Date(nextY, nextM - 1, 7), color: 'red', status: 'pending', month: m, year: calYear } });
+    }
+
+    const tdsDeducted = tdsService.calculateTDS(paymentAmount, category);
     res.status(201).json({
       success: true,
       tdsRecord,
       tdsCalculated: {
-        rate: TDS_RATES[category] || 10,
-        amount: (Number(paymentAmount) * ((TDS_RATES[category] || 10) / 100)).toFixed(2),
-        netPayment: (Number(paymentAmount) - (Number(paymentAmount) * ((TDS_RATES[category] || 10) / 100))).toFixed(2)
+        rate: tdsService.getRate(category),
+        amount: tdsDeducted.toFixed(2),
+        netPayment: (paymentAmount - tdsDeducted).toFixed(2)
       }
     });
   } catch (error) {
@@ -81,18 +124,21 @@ router.delete('/records/:id', auth, async (req: Request, res: Response) => {
     const { id } = req.params;
 
     const record = await prisma.tDSRecord.findUnique({
-      where: { id }
+      where: { id },
+      select: { companyId: true },
     });
 
     if (!record) {
       return res.status(404).json({ error: 'TDS record not found' });
     }
 
-    const isOwner = await verifyCompanyOwnership(record.companyId, req.userId!);
-    if (!isOwner) {
-      return res.status(403).json({ error: 'Unauthorized' });
-    }
+    const membership = await prisma.companyMember.findUnique({
+      where: { userId_companyId: { userId: req.userId!, companyId: record.companyId } },
+    });
 
+    if (!membership || !['OWNER', 'ADMIN', 'EDITOR'].includes(membership.role)) {
+      return res.status(403).json({ error: 'You do not have permission to delete this record.' });
+    }
     await prisma.tDSRecord.delete({
       where: { id }
     });
@@ -108,21 +154,27 @@ router.delete('/records/:id', auth, async (req: Request, res: Response) => {
 });
 
 // Get TDS records
-router.get('/records/:companyId', auth, async (req: Request, res: Response) => {
+router.get('/records/:companyId', auth, authorizeMember(['OWNER', 'ADMIN', 'EDITOR', 'VIEWER']), async (req: Request, res: Response) => {
   try {
     const { companyId } = req.params;
-    const { quarter, year } = req.query;
+    const { value, error: validationError } = recordQuerySchema.validate(req.query, {
+      abortEarly: false,
+      convert: true
+    });
 
-    // Verify ownership
-    const isOwner = await verifyCompanyOwnership(companyId, req.userId!);
-    if (!isOwner) {
-      return res.status(403).json({ error: 'Unauthorized' });
+    if (validationError) {
+      return res.status(400).json({
+        error: 'Invalid TDS record filters',
+        details: validationError.details.map((detail) => detail.message)
+      });
     }
+
+    const { quarter, year } = value;
 
     const records = await tdsService.getTDSRecords(
       companyId,
-      quarter ? Number(quarter) : undefined,
-      year ? Number(year) : undefined
+      quarter,
+      year
     );
 
     res.json({
@@ -137,19 +189,21 @@ router.get('/records/:companyId', auth, async (req: Request, res: Response) => {
 });
 
 // Generate Form 26Q
-router.post('/form26q/generate', auth, async (req: Request, res: Response) => {
+router.post('/form26q/generate', auth, authorizeMember(['OWNER', 'ADMIN', 'EDITOR']), async (req: Request, res: Response) => {
   try {
-    const { companyId, quarter, year } = req.body;
+    const { value, error: validationError } = periodSchema.validate(req.body, {
+      abortEarly: false,
+      stripUnknown: true
+    });
 
-    if (!companyId || !quarter || !year) {
-      return res.status(400).json({ error: 'Company ID, quarter, and year are required' });
+    if (validationError) {
+      return res.status(400).json({
+        error: 'Invalid Form 26Q period',
+        details: validationError.details.map((detail) => detail.message)
+      });
     }
 
-    // Verify ownership
-    const isOwner = await verifyCompanyOwnership(companyId, req.userId!);
-    if (!isOwner) {
-      return res.status(403).json({ error: 'Unauthorized' });
-    }
+    const { companyId, quarter, year } = value;
 
     // Generate Form 26Q
     const form26q = await tdsService.generateForm26Q(companyId, quarter, year);
@@ -165,19 +219,23 @@ router.post('/form26q/generate', auth, async (req: Request, res: Response) => {
 });
 
 // Save Form 26Q
-router.post('/form26q/save', auth, async (req: Request, res: Response) => {
+router.post('/form26q/save', auth, authorizeMember(['OWNER', 'ADMIN']), async (req: Request, res: Response) => {
   try {
-    const { companyId, quarter, year, totalTdsDeposited } = req.body;
+    const { value, error: validationError } = periodSchema.keys({
+      totalTdsDeposited: Joi.number().min(0).precision(2)
+    }).validate(req.body, {
+      abortEarly: false,
+      stripUnknown: true
+    });
 
-    if (!companyId || !quarter || !year) {
-      return res.status(400).json({ error: 'Company ID, quarter, and year are required' });
+    if (validationError) {
+      return res.status(400).json({
+        error: 'Invalid Form 26Q save request',
+        details: validationError.details.map((detail) => detail.message)
+      });
     }
 
-    // Verify ownership
-    const isOwner = await verifyCompanyOwnership(companyId, req.userId!);
-    if (!isOwner) {
-      return res.status(403).json({ error: 'Unauthorized' });
-    }
+    const { companyId, quarter, year, totalTdsDeposited } = value;
 
     // Generate and save
     const form26q = await tdsService.generateForm26Q(companyId, quarter, year);
@@ -201,15 +259,9 @@ router.post('/form26q/save', auth, async (req: Request, res: Response) => {
 });
 
 // Get all TDS returns
-router.get('/returns/:companyId', auth, async (req: Request, res: Response) => {
+router.get('/returns/:companyId', auth, authorizeMember(['OWNER', 'ADMIN', 'EDITOR', 'VIEWER']), async (req: Request, res: Response) => {
   try {
     const { companyId } = req.params;
-
-    // Verify ownership
-    const isOwner = await verifyCompanyOwnership(companyId, req.userId!);
-    if (!isOwner) {
-      return res.status(403).json({ error: 'Unauthorized' });
-    }
 
     const returns = await tdsService.getTDSReturns(companyId);
 
@@ -224,19 +276,21 @@ router.get('/returns/:companyId', auth, async (req: Request, res: Response) => {
 });
 
 // Mark Form 26Q as filed
-router.post('/form26q/filed', auth, async (req: Request, res: Response) => {
+router.post('/form26q/filed', auth, authorizeMember(['OWNER', 'ADMIN']), async (req: Request, res: Response) => {
   try {
-    const { companyId, quarter, year } = req.body;
+    const { value, error: validationError } = periodSchema.validate(req.body, {
+      abortEarly: false,
+      stripUnknown: true
+    });
 
-    if (!companyId || !quarter || !year) {
-      return res.status(400).json({ error: 'Company ID, quarter, and year are required' });
+    if (validationError) {
+      return res.status(400).json({
+        error: 'Invalid Form 26Q filed request',
+        details: validationError.details.map((detail) => detail.message)
+      });
     }
 
-    // Verify ownership
-    const isOwner = await verifyCompanyOwnership(companyId, req.userId!);
-    if (!isOwner) {
-      return res.status(403).json({ error: 'Unauthorized' });
-    }
+    const { companyId, quarter, year } = value;
 
     const form26q = await tdsService.generateForm26Q(companyId, quarter, year);
     await tdsService.saveTDSReturn(
@@ -247,6 +301,11 @@ router.post('/form26q/filed', auth, async (req: Request, res: Response) => {
       form26q.totalTdsDeducted
     );
     const tdsReturn = await tdsService.markForm26QAsFiled(companyId, quarter, year);
+
+    await (prisma as any).complianceTask.updateMany({
+      where: { companyId, type: 'TDS Return', quarter, year },
+      data: { status: 'completed' }
+    });
 
     res.json({
       success: true,
@@ -260,15 +319,9 @@ router.post('/form26q/filed', auth, async (req: Request, res: Response) => {
 });
 
 // Dashboard stats
-router.get('/dashboard/:companyId', auth, async (req: Request, res: Response) => {
+router.get('/dashboard/:companyId', auth, authorizeMember(['OWNER', 'ADMIN', 'EDITOR', 'VIEWER']), async (req: Request, res: Response) => {
   try {
     const { companyId } = req.params;
-
-    // Verify ownership
-    const isOwner = await verifyCompanyOwnership(companyId, req.userId!);
-    if (!isOwner) {
-      return res.status(403).json({ error: 'Unauthorized' });
-    }
 
     const stats = await tdsService.getDashboardStats(companyId);
 

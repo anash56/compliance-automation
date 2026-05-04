@@ -15,6 +15,7 @@ model User {
   password  String
   fullName  String
   role      String   @default("business_owner")
+  memberships CompanyMember[]
   companies Company[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -30,11 +31,13 @@ model Company {
   pan             String?
   employeesCount  Int?
   businessType    String?
+  members         CompanyMember[]
   invoices        Invoice[]
   gstReturns      GSTReturn[]
   tdsRecords      TDSRecord[]
   tdsReturns      TDSReturn[]
   deadlines       ComplianceDeadline[]
+  tasks           ComplianceTask[]
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -141,3 +144,39 @@ model ComplianceDeadline {
   @@index([companyId])
   @@index([dueDate])
 }
+
+model ComplianceTask {
+  id          String   @id @default(cuid())
+  companyId   String
+  type        String   // 'GST Filing', 'GST Payment', 'TDS Return', 'TDS Payment'
+  desc        String
+  date        DateTime // Due date
+  color       String
+  status      String   @default("pending") // 'pending', 'in_progress', 'completed'
+  month       Int?
+  year        Int?
+  quarter     Int?
+  
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model CompanyMember {
+  id          String   @id @default(cuid())
+  userId      String
+  companyId   String
+  role        String   @default("VIEWER") // OWNER, ADMIN, EDITOR, VIEWER
+  status      String   @default("PENDING") // PENDING, ACTIVE
+  
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  createdAt   DateTime @default(now())
+
+  // A user can only hold one role per company
+  @@unique([userId, companyId])
+  @@index([userId])
+  @@index([companyId])
+}
+

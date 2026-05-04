@@ -8,6 +8,14 @@ import auth from '../middleware/auth';
 
 const router: Router = express.Router();
 
+const getJwtSecret = () => {
+  if (!process.env.JWT_SECRET) {
+    throw new Error('JWT_SECRET is not configured');
+  }
+
+  return process.env.JWT_SECRET;
+};
+
 // Sign up
 router.post('/signup', async (req: Request, res: Response) => {
   try {
@@ -67,7 +75,7 @@ router.post('/signup', async (req: Request, res: Response) => {
     // Generate JWT token (for immediate login after signup)
     const token = jwt.sign(
       { userId: user.id },
-      process.env.JWT_SECRET || 'secret',
+      getJwtSecret(),
       { expiresIn: '7d' }
     );
 
@@ -115,7 +123,7 @@ router.post('/login', async (req: Request, res: Response) => {
     // Generate JWT token
     const token = jwt.sign(
       { userId: user.id },
-      process.env.JWT_SECRET || 'secret',
+      getJwtSecret(),
       { expiresIn: '7d' }
     );
 

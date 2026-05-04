@@ -14,13 +14,18 @@ declare global {
 
 const auth = (req: Request, res: Response, next: NextFunction) => {
   try {
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) {
+      return res.status(500).json({ error: 'JWT secret is not configured' });
+    }
+
     const token = req.header('Authorization')?.replace('Bearer ', '');
 
     if (!token) {
       return res.status(401).json({ error: 'No token provided' });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as any;
+    const decoded = jwt.verify(token, jwtSecret) as any;
     req.userId = decoded.userId;
     next();
   } catch (error) {

@@ -1,214 +1,112 @@
-// src/routes/invoices.ts
-
 import express, { Router, Request, Response } from 'express';
-import { prisma } from '../server';
-import { Decimal } from '@prisma/client/runtime/library';
 import auth from '../middleware/auth';
+import { prisma } from '../server';
+import { authorizeMember } from '../middleware/authorize';
 
 const router: Router = express.Router();
 
-// Helper function to verify company ownership
-const verifyCompanyOwnership = async (companyId: string, userId: string) => {
-  const company = await prisma.company.findUnique({
-    where: { id: companyId }
-  });
-
-  if (!company || company.userId !== userId) {
-    return false;
-  }
-  return true;
-};
-
-// Create invoice
-router.post('/', auth, async (req: Request, res: Response) => {
+// Create an invoice
+router.post('/', auth, authorizeMember(['OWNER', 'ADMIN', 'EDITOR']), async (req: Request, res: Response) => {
   try {
-    const { companyId, invoiceNumber, vendorName, vendorGst, amount, gstRate, invoiceDate, state, invoiceType, hsnCode, notes } = req.body;
+    const { companyId, vendorName, amount, gstRate, invoiceDate } = req.body;
 
-    // Validation
-    if (!companyId || !invoiceNumber || !vendorName || !amount || !gstRate) {
-      return res.status(400).json({ error: 'Required fields missing' });
-    }
+    const company = await prisma.company.findUnique({ where: { id: companyId } });
+    const companyState = (company?.state || '').trim().toLowerCase();
+    const invoiceState = (req.body.state || '').trim().toLowerCase();
+    const invoiceType = req.body.invoiceType || 'B2B';
 
-    // Verify company ownership
-    const isOwner = await verifyCompanyOwnership(companyId, req.userId!);
-    if (!isOwner) {
-      return res.status(403).json({ error: 'Unauthorized' });
-    }
+    const totalTax = (Number(amount) * Number(gstRate)) / 100;
+    
+    // Calculate split taxes based on state
+    const isInterstate = invoiceType === 'IMPORT' || 
+      (invoiceState && companyState && invoiceState !== companyState);
 
-    // Calculate taxes
-    const amountNum = Number(amount);
-    const gstRateNum = Number(gstRate);
-    const totalTax = (amountNum * gstRateNum) / 100;
-    const sgst = totalTax / 2;
-    const cgst = totalTax / 2;
+    const sgst = isInterstate ? 0 : totalTax / 2;
+    const cgst = isInterstate ? 0 : totalTax / 2;
+    const igst = isInterstate ? totalTax : 0;
 
     const invoice = await prisma.invoice.create({
       data: {
         companyId,
-        invoiceNumber,
+        invoiceNumber: req.body.invoiceNumber || `INV-${Date.now()}`,
         vendorName,
-        vendorGst: vendorGst || null,
-        amount: new Decimal(amountNum),
-        gstRate: gstRateNum,
-        sgst: new Decimal(sgst),
-        cgst: new Decimal(cgst),
-        igst: new Decimal(0),
-        totalTax: new Decimal(totalTax),
+        amount: Number(amount),
+        gstRate: Number(gstRate),
+        sgst,
+        cgst,
+        igst,
+        totalTax,
         invoiceDate: new Date(invoiceDate),
-        state: state || '',
-        invoiceType: invoiceType || 'B2B',
-        hsnCode: hsnCode || null,
-        notes: notes || null
+        invoiceType,
+        state: req.body.state || 'Local'
       }
     });
 
-    res.status(201).json({
-      success: true,
-      invoice,
-      calculatedTax: {
-        sgst: sgst.toFixed(2),
-        cgst: cgst.toFixed(2),
-        total: totalTax.toFixed(2)
-      }
-    });
+    // Ensure Compliance Tasks exist for the month
+    const invoiceDateObj = new Date(invoiceDate);
+    const m = invoiceDateObj.getMonth() + 1;
+    const y = invoiceDateObj.getFullYear();
+    const nextM = m === 12 ? 1 : m + 1;
+    const nextY = m === 12 ? y + 1 : y;
+    const monthName = invoiceDateObj.toLocaleString('default', { month: 'short' });
+
+    const gstr1Exists = await (prisma as any).complianceTask.findFirst({ where: { companyId, type: 'GST Filing', month: m, year: y } });
+    if (!gstr1Exists) {
+      await (prisma as any).complianceTask.create({ data: { companyId, type: 'GST Filing', desc: `GSTR-1 (${monthName} ${y})`, date: new Date(nextY, nextM - 1, 11), color: 'orange', status: 'pending', month: m, year: y } });
+    }
+    
+    const gstr3bExists = await (prisma as any).complianceTask.findFirst({ where: { companyId, type: 'GST Payment', month: m, year: y } });
+    if (!gstr3bExists) {
+      await (prisma as any).complianceTask.create({ data: { companyId, type: 'GST Payment', desc: `GSTR-3B (${monthName} ${y})`, date: new Date(nextY, nextM - 1, 20), color: 'yellow', status: 'pending', month: m, year: y } });
+    }
+
+    res.status(201).json({ success: true, invoice });
   } catch (error) {
     console.error('Create invoice error:', error);
     res.status(500).json({ error: 'Failed to create invoice' });
   }
 });
 
-// Get invoices
-router.get('/:companyId', auth, async (req: Request, res: Response) => {
+// Get invoices for a company
+router.get('/:companyId', auth, authorizeMember(['OWNER', 'ADMIN', 'EDITOR', 'VIEWER']), async (req: Request, res: Response) => {
   try {
     const { companyId } = req.params;
-    const { month, year } = req.query;
 
-    // Verify company ownership
-    const isOwner = await verifyCompanyOwnership(companyId, req.userId!);
-    if (!isOwner) {
-      return res.status(403).json({ error: 'Unauthorized' });
-    }
-
-    let invoices;
-
-    if (month && year) {
-      const startDate = new Date(Number(year), Number(month) - 1, 1);
-      const endDate = new Date(Number(year), Number(month), 1);
-
-      invoices = await prisma.invoice.findMany({
-        where: {
-          companyId,
-          invoiceDate: {
-            gte: startDate,
-            lt: endDate
-          }
-        },
-        orderBy: { invoiceDate: 'desc' }
-      });
-    } else {
-      invoices = await prisma.invoice.findMany({
-        where: { companyId },
-        orderBy: { invoiceDate: 'desc' },
-        take: 100
-      });
-    }
-
-    res.json({
-      success: true,
-      count: invoices.length,
-      invoices
+    const invoices = await prisma.invoice.findMany({
+      where: { companyId },
+      orderBy: { invoiceDate: 'desc' }
     });
+
+    res.json({ success: true, invoices });
   } catch (error) {
     console.error('Get invoices error:', error);
     res.status(500).json({ error: 'Failed to fetch invoices' });
   }
 });
 
-// Update invoice
-router.put('/:id', auth, async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-    const { vendorName, amount, gstRate, invoiceDate, state, notes } = req.body;
-
-    const invoice = await prisma.invoice.findUnique({
-      where: { id }
-    });
-
-    if (!invoice) {
-      return res.status(404).json({ error: 'Invoice not found' });
-    }
-
-    // Verify company ownership
-    const isOwner = await verifyCompanyOwnership(invoice.companyId, req.userId!);
-    if (!isOwner) {
-      return res.status(403).json({ error: 'Unauthorized' });
-    }
-
-    // Recalculate taxes
-    const amountNum = Number(amount) || Number(invoice.amount);
-    const gstRateNum = Number(gstRate) || invoice.gstRate;
-    const totalTax = (amountNum * gstRateNum) / 100;
-    const sgst = totalTax / 2;
-    const cgst = totalTax / 2;
-
-    const updatedInvoice = await prisma.invoice.update({
-      where: { id },
-      data: {
-        vendorName: vendorName || invoice.vendorName,
-        amount: new Decimal(amountNum),
-        gstRate: gstRateNum,
-        sgst: new Decimal(sgst),
-        cgst: new Decimal(cgst),
-        totalTax: new Decimal(totalTax),
-        invoiceDate: invoiceDate ? new Date(invoiceDate) : invoice.invoiceDate,
-        state: state || invoice.state,
-        notes: notes || invoice.notes
-      }
-    });
-
-    res.json({
-      success: true,
-      invoice: updatedInvoice
-    });
-  } catch (error) {
-    console.error('Update invoice error:', error);
-    res.status(500).json({ error: 'Failed to update invoice' });
-  }
-});
-
-// Delete invoice
+// Delete an invoice
 router.delete('/:id', auth, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-
     const invoice = await prisma.invoice.findUnique({
-      where: { id }
+      where: { id },
+      select: { companyId: true },
     });
 
-    if (!invoice) {
-      return res.status(404).json({ error: 'Invoice not found' });
-    }
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
 
-    // Verify company ownership
-    const isOwner = await verifyCompanyOwnership(invoice.companyId, req.userId!);
-    if (!isOwner) {
-      return res.status(403).json({ error: 'Unauthorized' });
-    }
-
-    await prisma.invoice.delete({
-      where: { id }
+    // Manually check permission before deleting
+    const membership = await prisma.companyMember.findUnique({
+      where: { userId_companyId: { userId: req.userId!, companyId: invoice.companyId } },
     });
 
-    res.json({
-      success: true,
-      message: 'Invoice deleted'
-    });
-  } catch (error: any) {
-    if (error.code === 'P2014') {
-      return res.status(400).json({
-        error: 'Cannot delete invoice - referenced by GST return'
-      });
+    if (!membership || !['OWNER', 'ADMIN', 'EDITOR'].includes(membership.role)) {
+      return res.status(403).json({ error: 'You do not have permission to delete this invoice.' });
     }
+
+    await prisma.invoice.delete({ where: { id } });
+    res.json({ success: true, message: 'Invoice deleted' });
+  } catch (error) {
     console.error('Delete invoice error:', error);
     res.status(500).json({ error: 'Failed to delete invoice' });
   }

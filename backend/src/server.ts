@@ -11,32 +11,19 @@ import invoiceRoutes from './routes/invoices';
 import gstRoutes from './routes/gst';
 import tdsRoutes from './routes/tds';
 import companyRoutes from './routes/companies';
+import { startComplianceCron } from './routes/complianceCron';
 
 dotenv.config();
 
 const app: Express = express();
 const PORT = process.env.PORT || 5000;
-const allowedOrigins = new Set([
-  process.env.FRONTEND_URL || 'http://localhost:5173',
-  'http://localhost:5173',
-  'http://localhost:5174',
-  'http://127.0.0.1:5173',
-  'http://127.0.0.1:5174'
-]);
 
 // Export prisma for use in other files
 export const prisma = new PrismaClient();
 
 // Middleware
 app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin || allowedOrigins.has(origin)) {
-      callback(null, true);
-      return;
-    }
-
-    callback(new Error(`CORS blocked origin: ${origin}`));
-  },
+  origin: true, // Automatically reflects the request origin, solving local dev CORS issues
   credentials: true
 }));
 app.use(express.json());
@@ -80,6 +67,9 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
     message: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error'
   });
 });
+
+// Start Background Jobs
+startComplianceCron();
 
 // Graceful shutdown
 process.on('SIGINT', async () => {

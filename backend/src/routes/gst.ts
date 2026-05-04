@@ -2,36 +2,19 @@
 
 import express, { Router, Request, Response } from 'express';
 import auth from '../middleware/auth';
-import gstService from '../services/gstService';
 import { prisma } from '../server';
+import gstService from '../services/gstService';
+import { authorizeMember } from '../middleware/authorize';
 
 const router: Router = express.Router();
 
-// Helper to verify company ownership
-const verifyCompanyOwnership = async (companyId: string, userId: string) => {
-  const company = await prisma.company.findUnique({
-    where: { id: companyId }
-  });
-
-  if (!company || company.userId !== userId) {
-    return false;
-  }
-  return true;
-};
-
 // Generate GSTR-1
-router.post('/gstr1/generate', auth, async (req: Request, res: Response) => {
+router.post('/gstr1/generate', auth, authorizeMember(['OWNER', 'ADMIN', 'EDITOR']), async (req: Request, res: Response) => {
   try {
     const { companyId, month, year } = req.body;
 
     if (!companyId || !month || !year) {
       return res.status(400).json({ error: 'Company ID, month, and year are required' });
-    }
-
-    // Verify ownership
-    const isOwner = await verifyCompanyOwnership(companyId, req.userId!);
-    if (!isOwner) {
-      return res.status(403).json({ error: 'Unauthorized' });
     }
 
     // Generate GSTR-1
@@ -48,18 +31,12 @@ router.post('/gstr1/generate', auth, async (req: Request, res: Response) => {
 });
 
 // Generate GSTR-3B
-router.post('/gstr3b/generate', auth, async (req: Request, res: Response) => {
+router.post('/gstr3b/generate', auth, authorizeMember(['OWNER', 'ADMIN']), async (req: Request, res: Response) => {
   try {
     const { companyId, month, year } = req.body;
 
     if (!companyId || !month || !year) {
       return res.status(400).json({ error: 'Company ID, month, and year are required' });
-    }
-
-    // Verify ownership
-    const isOwner = await verifyCompanyOwnership(companyId, req.userId!);
-    if (!isOwner) {
-      return res.status(403).json({ error: 'Unauthorized' });
     }
 
     // Generate GSTR-1 and GSTR-3B
@@ -81,15 +58,9 @@ router.post('/gstr3b/generate', auth, async (req: Request, res: Response) => {
 });
 
 // Get all GST returns
-router.get('/returns/:companyId', auth, async (req: Request, res: Response) => {
+router.get('/returns/:companyId', auth, authorizeMember(['OWNER', 'ADMIN', 'EDITOR', 'VIEWER']), async (req: Request, res: Response) => {
   try {
     const { companyId } = req.params;
-
-    // Verify ownership
-    const isOwner = await verifyCompanyOwnership(companyId, req.userId!);
-    if (!isOwner) {
-      return res.status(403).json({ error: 'Unauthorized' });
-    }
 
     const returns = await gstService.getGSTReturns(companyId);
 
@@ -104,7 +75,7 @@ router.get('/returns/:companyId', auth, async (req: Request, res: Response) => {
 });
 
 // Mark GSTR-1 as filed
-router.post('/gstr1/filed', auth, async (req: Request, res: Response) => {
+router.post('/gstr1/filed', auth, authorizeMember(['OWNER', 'ADMIN']), async (req: Request, res: Response) => {
   try {
     const { companyId, month, year } = req.body;
 
@@ -112,16 +83,15 @@ router.post('/gstr1/filed', auth, async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Company ID, month, and year are required' });
     }
 
-    // Verify ownership
-    const isOwner = await verifyCompanyOwnership(companyId, req.userId!);
-    if (!isOwner) {
-      return res.status(403).json({ error: 'Unauthorized' });
-    }
-
     const gstr1 = await gstService.generateGSTR1(companyId, month, year);
     const gstr3b = await gstService.generateGSTR3B(companyId, month, year);
     await gstService.saveGSTReturn(companyId, month, year, gstr1, gstr3b);
     const gstReturn = await gstService.markAsFiledGSTR1(companyId, month, year);
+
+    await (prisma as any).complianceTask.updateMany({
+      where: { companyId, type: 'GST Filing', month, year },
+      data: { status: 'completed' }
+    });
 
     res.json({
       success: true,
@@ -135,7 +105,7 @@ router.post('/gstr1/filed', auth, async (req: Request, res: Response) => {
 });
 
 // Mark GSTR-3B as filed
-router.post('/gstr3b/filed', auth, async (req: Request, res: Response) => {
+router.post('/gstr3b/filed', auth, authorizeMember(['OWNER', 'ADMIN']), async (req: Request, res: Response) => {
   try {
     const { companyId, month, year } = req.body;
 
@@ -143,16 +113,15 @@ router.post('/gstr3b/filed', auth, async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Company ID, month, and year are required' });
     }
 
-    // Verify ownership
-    const isOwner = await verifyCompanyOwnership(companyId, req.userId!);
-    if (!isOwner) {
-      return res.status(403).json({ error: 'Unauthorized' });
-    }
-
     const gstr1 = await gstService.generateGSTR1(companyId, month, year);
     const gstr3b = await gstService.generateGSTR3B(companyId, month, year);
     await gstService.saveGSTReturn(companyId, month, year, gstr1, gstr3b);
     const gstReturn = await gstService.markAsFiledGSTR3B(companyId, month, year);
+
+    await (prisma as any).complianceTask.updateMany({
+      where: { companyId, type: 'GST Payment', month, year },
+      data: { status: 'completed' }
+    });
 
     res.json({
       success: true,
@@ -166,15 +135,9 @@ router.post('/gstr3b/filed', auth, async (req: Request, res: Response) => {
 });
 
 // Get dashboard stats
-router.get('/dashboard/:companyId', auth, async (req: Request, res: Response) => {
+router.get('/dashboard/:companyId', auth, authorizeMember(['OWNER', 'ADMIN', 'EDITOR', 'VIEWER']), async (req: Request, res: Response) => {
   try {
     const { companyId } = req.params;
-
-    // Verify ownership
-    const isOwner = await verifyCompanyOwnership(companyId, req.userId!);
-    if (!isOwner) {
-      return res.status(403).json({ error: 'Unauthorized' });
-    }
 
     // Get total invoices
     const invoiceCount = await prisma.invoice.count({
@@ -186,14 +149,18 @@ router.get('/dashboard/:companyId', auth, async (req: Request, res: Response) =>
       where: { companyId }
     });
 
-    const totalTax = invoices.reduce((sum, i) => sum + Number(i.totalTax), 0);
+    const totalTax = invoices.reduce((sum: number, i) => sum + Number(i.totalTax), 0);
 
     // Get GST returns filed
     const gstReturns = await prisma.gSTReturn.findMany({
       where: { companyId }
     });
 
-    const filedCount = gstReturns.filter(r => r.gstr1Status === 'submitted').length;
+    const filedCount = gstReturns.reduce((count: number, gstReturn) => {
+      return count + 
+        (gstReturn.gstr1Status === 'submitted' || gstReturn.gstr1FiledDate ? 1 : 0) +
+        (gstReturn.gstr3bStatus === 'submitted' || gstReturn.gstr3bFiledDate ? 1 : 0);
+    }, 0);
 
     res.json({
       success: true,
@@ -201,7 +168,7 @@ router.get('/dashboard/:companyId', auth, async (req: Request, res: Response) =>
         totalInvoices: invoiceCount,
         totalTax: Math.round(totalTax * 100) / 100,
         gstReturnsFiledCount: filedCount,
-        gstReturnsDraftCount: gstReturns.length - filedCount
+        gstReturnsDraftCount: (gstReturns.length * 2) - filedCount
       }
     });
   } catch (error) {

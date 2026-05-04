@@ -44,11 +44,24 @@ export const login = createAsyncThunk(
     }
   }
 );
+
+export const fetchCurrentUser = createAsyncThunk(
+  'auth/me',
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await api.get('/auth/me');
+      return response.data;
+    } catch (error: any) {
+      return rejectWithValue(getAuthErrorMessage(error, 'Failed to restore session'));
+    }
+  }
+);
  
 export const logout = createAsyncThunk(
   'auth/logout',
   async () => {
     localStorage.removeItem('token');
+    localStorage.removeItem('selectedCompanyId');
     return null;
   }
 );
@@ -97,6 +110,21 @@ const authSlice = createSlice({
       .addCase(login.rejected, (state, action) => {
         state.loading = false;
         state.error = (action.payload as string) || action.error.message || 'Login failed';
+      })
+      .addCase(fetchCurrentUser.pending, (state) => {
+        state.loading = true;
+      })
+      .addCase(fetchCurrentUser.fulfilled, (state, action) => {
+        state.loading = false;
+        state.error = null;
+        state.user = action.payload.user;
+      })
+      .addCase(fetchCurrentUser.rejected, (state) => {
+        state.loading = false;
+        state.user = null;
+        state.token = null;
+        localStorage.removeItem('token');
+        localStorage.removeItem('selectedCompanyId');
       })
       .addCase(logout.fulfilled, (state) => {
         state.user = null;

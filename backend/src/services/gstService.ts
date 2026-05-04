@@ -66,8 +66,8 @@ export class GSTService {
     try {
       const gstr1 = await this.generateGSTR1(companyId, month, year);
 
-      // Assume 30% input credit from purchases (simplified)
-      const inputCredit = gstr1.totalTax * 0.3;
+      // Purchase/input invoices are not modeled yet, so do not invent ITC.
+      const inputCredit = 0;
       const netPayable = gstr1.totalTax - inputCredit;
 
       return {
@@ -99,9 +99,7 @@ export class GSTService {
           totalSales: new Decimal(gstr1Data.totalSales),
           totalTaxLiability: new Decimal(gstr1Data.totalTax),
           inputCredit: new Decimal(gstr3bData.inputCredit),
-          netPayable: new Decimal(gstr3bData.netPayable),
-          gstr1Status: 'generated',
-          gstr3bStatus: 'generated'
+          netPayable: new Decimal(gstr3bData.netPayable)
         },
         create: {
           companyId,
@@ -110,7 +108,9 @@ export class GSTService {
           totalSales: new Decimal(gstr1Data.totalSales),
           totalTaxLiability: new Decimal(gstr1Data.totalTax),
           inputCredit: new Decimal(gstr3bData.inputCredit),
-          netPayable: new Decimal(gstr3bData.netPayable)
+          netPayable: new Decimal(gstr3bData.netPayable),
+          gstr1Status: 'generated',
+          gstr3bStatus: 'generated'
         }
       });
 

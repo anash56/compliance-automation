@@ -4,40 +4,73 @@ import { prisma } from '../server';
 import { Decimal } from '@prisma/client/runtime/library';
 
 // TDS rates for different categories
-export const TDS_RATES: Record<string, number> = {
-  'services': 10,
-  'goods': 15,
-  'commission': 10,
-  'rent': 10,
-  'other': 10
+export const TDS_RATES = {
+  services: 10,
+  goods: 15,
+  commission: 10,
+  rent: 10,
+  other: 10
+} as const;
+
+export type TDSCategory = keyof typeof TDS_RATES;
+
+export interface CreateTDSRecordInput {
+  companyId: string;
+  vendorName: string;
+  vendorPan?: string;
+  paymentDate: Date;
+  paymentAmount: number;
+  category: TDSCategory;
+  quarter: number;
+  year: number;
+}
+
+export interface Form26QData {
+  quarter: number;
+  year: number;
+  totalPayments: number;
+  totalTdsDeducted: number;
+  vendorCount: number;
+  vendors: Array<{
+    name: string;
+    pan: string | null;
+    amount: number;
+    tdsDeducted: number;
+    category: string;
+  }>;
+  status: string;
 };
 
 export class TDSService {
+  getRate(category: string): number {
+    return TDS_RATES[category as TDSCategory] ?? TDS_RATES.other;
+  }
+
   /**
    * Calculate TDS for a vendor payment
    */
   calculateTDS(amount: number, category: string): number {
-    const rate = TDS_RATES[category] || 10;
-    return (amount * rate) / 100;
+    return Math.round(((amount * this.getRate(category)) / 100) * 100) / 100;
   }
 
   /**
    * Create TDS record
    */
-  async createTDSRecord(
-    companyId: string,
-    vendorName: string,
-    vendorPan: string | undefined,
-    paymentDate: Date,
-    paymentAmount: number,
-    category: string,
-    quarter: number,
-    year: number
-  ) {
+  async createTDSRecord(input: CreateTDSRecordInput) {
     try {
-      const tdsRate = TDS_RATES[category] || 10;
+      const {
+        companyId,
+        vendorName,
+        vendorPan,
+        paymentDate,
+        paymentAmount,
+        category,
+        quarter,
+        year
+      } = input;
+      const tdsRate = this.getRate(category);
       const tdsDeducted = this.calculateTDS(paymentAmount, category);
-      const paymentMade = paymentAmount - tdsDeducted;
+      const paymentMade = Math.round((paymentAmount - tdsDeducted) * 100) / 100;
 
       const tdsRecord = await prisma.tDSRecord.create({
         data: {
@@ -106,7 +139,7 @@ export class TDSService {
     companyId: string,
     quarter: number,
     year: number,
-    form26qData: any,
+    form26qData: Form26QData,
     totalTdsDeposited: number
   ) {
     try {
@@ -156,15 +189,7 @@ export class TDSService {
    */
   async getTDSRecords(companyId: string, quarter?: number, year?: number) {
     try {
-      let where: any = { companyId };
-
-      if (quarter && year) {
-        where = {
-          companyId,
-          quarter,
-          year
-        };
-      }
+      const where = quarter && year ? { companyId, quarter, year } : { companyId };
 
       const records = await prisma.tDSRecord.findMany({
         where,

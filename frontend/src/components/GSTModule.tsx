@@ -1,18 +1,24 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import api from '../services/api';
 import { Invoice } from '../types';
+// @ts-ignore
+import html2pdf from 'html2pdf.js/dist/html2pdf.bundle.min.js';
+
 interface GSTModuleProps {
 companyId: string;
 invoices: Invoice[];
 }
 export default function GSTModule({ companyId, invoices }: GSTModuleProps) {
-const [month, setMonth] = useState(new Date().getMonth() + 1);
-const [year, setYear] = useState(new Date().getFullYear());
+const prevMonthDate = new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1);
+const [month, setMonth] = useState(prevMonthDate.getMonth() + 1);
+const [year, setYear] = useState(prevMonthDate.getFullYear());
 const [gstr1, setGstr1] = useState<any>(null);
 const [gstr3b, setGstr3b] = useState<any>(null);
 const [loading, setLoading] = useState(false);
 const [error, setError] = useState('');
 const [success, setSuccess] = useState('');
+const gstr1Ref = useRef<HTMLDivElement>(null);
+const gstr3bRef = useRef<HTMLDivElement>(null);
 const handleGenerateGSTR1 = async () => {
 setLoading(true);
 setError('');
@@ -96,24 +102,28 @@ try {
 }
 };
 const downloadGSTR1 = () => {
-  if (!gstr1) return;
-  const dataStr = JSON.stringify(gstr1, null, 2);
-  const dataBlob = new Blob([dataStr], { type: 'application/json' });
-  const url = URL.createObjectURL(dataBlob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `GSTR-1_${month}_${year}.json`;
-  link.click();
+  const element = gstr1Ref.current;
+  if (!element) return;
+  const opt = {
+    margin: 0.5,
+    filename: `GSTR-1_${month}_${year}.pdf`,
+    image: { type: 'jpeg', quality: 0.98 },
+    html2canvas: { scale: 2, useCORS: true },
+    jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+  };
+  html2pdf().set(opt).from(element).save();
 };
 const downloadGSTR3B = () => {
-  if (!gstr3b) return;
-  const dataStr = JSON.stringify(gstr3b, null, 2);
-  const dataBlob = new Blob([dataStr], { type: 'application/json' });
-  const url = URL.createObjectURL(dataBlob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `GSTR-3B_${month}_${year}.json`;
-  link.click();
+  const element = gstr3bRef.current;
+  if (!element) return;
+  const opt = {
+    margin: 0.5,
+    filename: `GSTR-3B_${month}_${year}.pdf`,
+    image: { type: 'jpeg', quality: 0.98 },
+    html2canvas: { scale: 2, useCORS: true },
+    jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+  };
+  html2pdf().set(opt).from(element).save();
 };
 const monthInvoices = invoices.filter(inv => {
 const invDate = new Date(inv.invoiceDate);
@@ -193,9 +203,9 @@ className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:
                   <tr key={inv.id} className={idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
                     <td className="py-3">{inv.vendorName}</td>
                     <td className="py-3">{new Date(inv.invoiceDate).toLocaleDateString()}</td>
-                    <td className="text-right py-3">₹{inv.amount.toLocaleString()}</td>
+                    <td className="text-right py-3">INR {inv.amount.toLocaleString()}</td>
                     <td className="text-right py-3">{inv.gstRate}%</td>
-                    <td className="text-right py-3 font-semibold">₹{inv.totalTax.toLocaleString()}</td>
+                    <td className="text-right py-3 font-semibold">INR {inv.totalTax.toLocaleString()}</td>
                   </tr>
                 ))}
               </tbody>
@@ -203,11 +213,11 @@ className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:
                 <tr className="border-t-2 border-gray-300 bg-gray-50">
                   <td colSpan={2} className="py-3 font-semibold">Total</td>
                   <td className="text-right py-3 font-semibold">
-                    ₹{monthInvoices.reduce((sum, inv) => sum + inv.amount, 0).toLocaleString()}
+                    INR {monthInvoices.reduce((sum, inv) => sum + inv.amount, 0).toLocaleString()}
                   </td>
                   <td colSpan={1}></td>
                   <td className="text-right py-3 font-semibold">
-                    ₹{monthInvoices.reduce((sum, inv) => sum + inv.totalTax, 0).toLocaleString()}
+                    INR {monthInvoices.reduce((sum, inv) => sum + inv.totalTax, 0).toLocaleString()}
                   </td>
                 </tr>
               </tfoot>
@@ -228,17 +238,17 @@ className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:
 
   {/* GSTR-1 Result */}
   {gstr1 && (
-    <div className="bg-white p-6 rounded-lg border border-gray-200">
+    <div className="bg-white p-6 rounded-lg border border-gray-200" ref={gstr1Ref}>
       <h3 className="text-lg font-semibold mb-4">GSTR-1 Summary</h3>
 
       <div className="grid grid-cols-3 gap-4 mb-6">
         <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
           <p className="text-sm text-gray-600">Total Sales</p>
-          <p className="text-2xl font-bold text-blue-600">₹{gstr1.totalSales.toLocaleString()}</p>
+          <p className="text-2xl font-bold text-blue-600">INR {gstr1.totalSales.toLocaleString()}</p>
         </div>
         <div className="p-4 bg-green-50 rounded-lg border border-green-200">
           <p className="text-sm text-gray-600">Total Tax</p>
-          <p className="text-2xl font-bold text-green-600">₹{gstr1.totalTax.toLocaleString()}</p>
+          <p className="text-2xl font-bold text-green-600">INR {gstr1.totalTax.toLocaleString()}</p>
         </div>
         <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
           <p className="text-sm text-gray-600">Invoice Count</p>
@@ -252,25 +262,25 @@ className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:
           {gstr1.byRate.map((item: any) => (
             <div key={item.rate} className="flex justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
               <span className="font-medium">{item.rate}% GST ({item.count} invoices)</span>
-              <span className="text-gray-700">₹{item.amount.toLocaleString()} → Tax: ₹{item.tax.toLocaleString()}</span>
+              <span className="text-gray-700">INR {item.amount.toLocaleString()} / Tax: INR {item.tax.toLocaleString()}</span>
             </div>
           ))}
         </div>
       </div>
 
-      <div className="flex gap-3">
+      <div className="flex gap-3 mt-6" data-html2canvas-ignore>
         <button
           onClick={downloadGSTR1}
           className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-semibold transition"
         >
-          📥 Download GSTR-1
+          Download PDF
         </button>
         <button
           onClick={handleGenerateGSTR3B}
           disabled={loading}
           className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 font-semibold transition"
         >
-          {loading ? 'Generating...' : '→ Generate GSTR-3B'}
+          {loading ? 'Generating...' : 'Generate GSTR-3B'}
         </button>
         <button
           onClick={handleMarkGSTR1Filed}
@@ -294,37 +304,37 @@ className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:
 
   {/* GSTR-3B Result */}
   {gstr3b && (
-    <div className="bg-white p-6 rounded-lg border border-gray-200">
+    <div className="bg-white p-6 rounded-lg border border-gray-200" ref={gstr3bRef}>
       <h3 className="text-lg font-semibold mb-4">GSTR-3B Summary (Payment Liability)</h3>
 
       <div className="grid grid-cols-3 gap-4 mb-6">
         <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
           <p className="text-sm text-gray-600">Tax Liability</p>
-          <p className="text-2xl font-bold text-blue-600">₹{gstr3b.totalTax.toLocaleString()}</p>
+          <p className="text-2xl font-bold text-blue-600">INR {gstr3b.totalTax.toLocaleString()}</p>
         </div>
         <div className="p-4 bg-yellow-50 rounded-lg border border-yellow-200">
-          <p className="text-sm text-gray-600">Input Credit (30%)</p>
-          <p className="text-2xl font-bold text-yellow-600">₹{gstr3b.inputCredit.toLocaleString()}</p>
+          <p className="text-sm text-gray-600">Input Credit</p>
+          <p className="text-2xl font-bold text-yellow-600">INR {gstr3b.inputCredit.toLocaleString()}</p>
         </div>
         <div className="p-4 bg-red-50 rounded-lg border border-red-200">
           <p className="text-sm text-gray-600">Net Payable</p>
-          <p className="text-2xl font-bold text-red-600">₹{gstr3b.netPayable.toLocaleString()}</p>
+          <p className="text-2xl font-bold text-red-600">INR {gstr3b.netPayable.toLocaleString()}</p>
         </div>
       </div>
 
       <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 mb-6">
         <h4 className="font-semibold mb-2">Calculation Breakdown:</h4>
-        <p className="text-sm text-gray-700">Tax Liability: ₹{gstr3b.totalTax.toLocaleString()}</p>
-        <p className="text-sm text-gray-700">Less: Input Credit: ₹{gstr3b.inputCredit.toLocaleString()}</p>
-        <p className="text-sm text-gray-700 font-semibold mt-2">Net Amount to Pay: ₹{gstr3b.netPayable.toLocaleString()}</p>
+        <p className="text-sm text-gray-700">Tax Liability: INR {gstr3b.totalTax.toLocaleString()}</p>
+        <p className="text-sm text-gray-700">Less: Input Credit: INR {gstr3b.inputCredit.toLocaleString()}</p>
+        <p className="text-sm text-gray-700 font-semibold mt-2">Net Amount to Pay: INR {gstr3b.netPayable.toLocaleString()}</p>
       </div>
 
-      <div className="flex gap-3">
+      <div className="flex gap-3 mt-6" data-html2canvas-ignore>
         <button
           onClick={downloadGSTR3B}
           className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-semibold transition"
         >
-          📥 Download GSTR-3B
+          Download PDF
         </button>
         <button
           onClick={handleMarkGSTR3BFiled}

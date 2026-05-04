@@ -115,10 +115,10 @@ export default function Login() {
 
       try {
         await dispatch(signup({ email, password, fullName })).unwrap();
-        setSuccessMessage('Account created successfully! Redirecting to dashboard...');
+        setSuccessMessage('Account created successfully! Redirecting to company setup...');
         const token = localStorage.getItem('token');
         if (token) {
-          setTimeout(() => navigate('/dashboard'), 1500);
+          setTimeout(() => navigate('/onboarding'), 1500);
         } else {
           setTimeout(() => navigate('/login'), 1500);
         }
@@ -135,7 +135,7 @@ export default function Login() {
       try {
         await dispatch(login({ email, password })).unwrap();
         setSuccessMessage('Login successful! Redirecting...');
-        setTimeout(() => navigate('/dashboard'), 1000);
+        setTimeout(() => navigate('/onboarding'), 1000);
       } catch (err: any) {
         setLocalError(err || 'Authentication failed');
       }
