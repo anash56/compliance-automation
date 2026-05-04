@@ -10,6 +10,16 @@ router.post('/', auth, authorizeMember(['OWNER', 'ADMIN', 'EDITOR']), async (req
   try {
     const { companyId, vendorName, amount, gstRate, invoiceDate } = req.body;
 
+    if (Number(amount) <= 0) {
+      return res.status(400).json({ error: 'Amount must be greater than 0' });
+    }
+    
+    const vendorGst = req.body.vendorGst ? String(req.body.vendorGst).trim().toUpperCase() : null;
+    const gstPattern = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
+    if (vendorGst && !gstPattern.test(vendorGst)) {
+      return res.status(400).json({ error: 'Invalid Vendor GST Number format' });
+    }
+
     const company = await prisma.company.findUnique({ where: { id: companyId } });
     const companyState = (company?.state || '').trim().toLowerCase();
     const invoiceState = (req.body.state || '').trim().toLowerCase();
@@ -30,6 +40,7 @@ router.post('/', auth, authorizeMember(['OWNER', 'ADMIN', 'EDITOR']), async (req
         companyId,
         invoiceNumber: req.body.invoiceNumber || `INV-${Date.now()}`,
         vendorName,
+        vendorGst,
         amount: Number(amount),
         gstRate: Number(gstRate),
         sgst,
@@ -50,15 +61,23 @@ router.post('/', auth, authorizeMember(['OWNER', 'ADMIN', 'EDITOR']), async (req
     const nextY = m === 12 ? y + 1 : y;
     const monthName = invoiceDateObj.toLocaleString('default', { month: 'short' });
 
-    const gstr1Exists = await (prisma as any).complianceTask.findFirst({ where: { companyId, type: 'GST Filing', month: m, year: y } });
-    if (!gstr1Exists) {
-      await (prisma as any).complianceTask.create({ data: { companyId, type: 'GST Filing', desc: `GSTR-1 (${monthName} ${y})`, date: new Date(nextY, nextM - 1, 11), color: 'orange', status: 'pending', month: m, year: y } });
-    }
-    
-    const gstr3bExists = await (prisma as any).complianceTask.findFirst({ where: { companyId, type: 'GST Payment', month: m, year: y } });
-    if (!gstr3bExists) {
-      await (prisma as any).complianceTask.create({ data: { companyId, type: 'GST Payment', desc: `GSTR-3B (${monthName} ${y})`, date: new Date(nextY, nextM - 1, 20), color: 'yellow', status: 'pending', month: m, year: y } });
-    }
+    try {
+      if ((prisma as any).complianceTask) {
+        const gstr1Exists = await (prisma as any).complianceTask.findFirst({ where: { companyId, type: 'GST Filing', month: m, year: y } });
+        if (!gstr1Exists) {
+          await (prisma as any).complianceTask.create({ data: { companyId, type: 'GST Filing', desc: `GSTR-1 (${monthName} ${y})`, date: new Date(nextY, nextM - 1, 11), color: 'orange', status: 'pending', month: m, year: y } });
+        }
+        const gstr3bExists = await (prisma as any).complianceTask.findFirst({ where: { companyId, type: 'GST Payment', month: m, year: y } });
+        if (!gstr3bExists) {
+          await (prisma as any).complianceTask.create({ data: { companyId, type: 'GST Payment', desc: `GSTR-3B (${monthName} ${y})`, date: new Date(nextY, nextM - 1, 20), color: 'yellow', status: 'pending', month: m, year: y } });
+        }
+      }
+      if ((prisma as any).auditLog) {
+        await (prisma as any).auditLog.create({
+          data: { companyId, userId: req.userId!, action: 'CREATE_INVOICE', details: `Created invoice ${invoice.invoiceNumber} for INR ${amount}` }
+        });
+      }
+    } catch (e) { console.warn('Task/Audit skipped'); }
 
     res.status(201).json({ success: true, invoice });
   } catch (error) {
@@ -72,6 +91,16 @@ router.put('/:id', auth, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { vendorName, amount, gstRate, invoiceDate, state, invoiceType, hsnCode, notes, invoiceNumber } = req.body;
+
+    if (Number(amount) <= 0) {
+      return res.status(400).json({ error: 'Amount must be greater than 0' });
+    }
+    
+    const vendorGst = req.body.vendorGst ? String(req.body.vendorGst).trim().toUpperCase() : null;
+    const gstPattern = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
+    if (vendorGst && !gstPattern.test(vendorGst)) {
+      return res.status(400).json({ error: 'Invalid Vendor GST Number format' });
+    }
 
     const invoice = await prisma.invoice.findUnique({ where: { id }, select: { companyId: true, state: true, invoiceType: true } });
     if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
@@ -101,6 +130,7 @@ router.put('/:id', auth, async (req: Request, res: Response) => {
       data: {
         invoiceNumber,
         vendorName,
+        vendorGst,
         amount: Number(amount),
         gstRate: Number(gstRate),
         sgst,
@@ -114,6 +144,14 @@ router.put('/:id', auth, async (req: Request, res: Response) => {
         notes: notes || null
       }
     });
+
+    try {
+      if ((prisma as any).auditLog) {
+        await (prisma as any).auditLog.create({
+          data: { companyId: invoice.companyId, userId: req.userId!, action: 'UPDATE_INVOICE', details: `Updated invoice ${invoiceNumber}` }
+        });
+      }
+    } catch(e) {}
 
     res.json({ success: true, invoice: updatedInvoice });
   } catch (error) {
@@ -145,7 +183,7 @@ router.delete('/:id', auth, async (req: Request, res: Response) => {
     const { id } = req.params;
     const invoice = await prisma.invoice.findUnique({
       where: { id },
-      select: { companyId: true },
+      select: { companyId: true, invoiceNumber: true },
     });
 
     if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
@@ -160,6 +198,15 @@ router.delete('/:id', auth, async (req: Request, res: Response) => {
     }
 
     await prisma.invoice.delete({ where: { id } });
+
+    try {
+      if ((prisma as any).auditLog) {
+        await (prisma as any).auditLog.create({
+          data: { companyId: invoice.companyId, userId: req.userId!, action: 'DELETE_INVOICE', details: `Deleted invoice ${invoice.invoiceNumber}` }
+        });
+      }
+    } catch(e) {}
+
     res.json({ success: true, message: 'Invoice deleted' });
   } catch (error) {
     console.error('Delete invoice error:', error);

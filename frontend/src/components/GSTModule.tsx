@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import api from '../services/api';
 import { Invoice } from '../types';
 // @ts-ignore
@@ -6,19 +6,39 @@ import html2pdf from 'html2pdf.js/dist/html2pdf.bundle.min.js';
 
 interface GSTModuleProps {
 companyId: string;
-invoices: Invoice[];
 }
-export default function GSTModule({ companyId, invoices }: GSTModuleProps) {
+export default function GSTModule({ companyId }: GSTModuleProps) {
 const prevMonthDate = new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1);
 const [month, setMonth] = useState(prevMonthDate.getMonth() + 1);
 const [year, setYear] = useState(prevMonthDate.getFullYear());
 const [gstr1, setGstr1] = useState<any>(null);
 const [gstr3b, setGstr3b] = useState<any>(null);
+const [monthInvoices, setMonthInvoices] = useState<Invoice[]>([]);
 const [loading, setLoading] = useState(false);
 const [error, setError] = useState('');
 const [success, setSuccess] = useState('');
 const gstr1Ref = useRef<HTMLDivElement>(null);
 const gstr3bRef = useRef<HTMLDivElement>(null);
+
+useEffect(() => {
+  const fetchMonthInvoices = async () => {
+    try {
+      const response = await api.get(`/invoices/${companyId}`);
+      if (response.data.success) {
+        const filtered = response.data.invoices.filter((inv: Invoice) => {
+          const invDate = new Date(inv.invoiceDate);
+          return invDate.getMonth() + 1 === month && invDate.getFullYear() === year;
+        });
+        setMonthInvoices(filtered);
+      }
+    } catch (err) {
+      console.error('Failed to fetch invoices for GST module');
+    }
+  };
+  if (companyId) {
+    fetchMonthInvoices();
+  }
+}, [companyId, month, year]);
 const handleGenerateGSTR1 = async () => {
 setLoading(true);
 setError('');
@@ -125,10 +145,6 @@ const downloadGSTR3B = () => {
   };
   html2pdf().set(opt).from(element).save();
 };
-const monthInvoices = invoices.filter(inv => {
-const invDate = new Date(inv.invoiceDate);
-return invDate.getMonth() + 1 === month && invDate.getFullYear() === year;
-});
 return (
 <div className="space-y-6">
 {/* Month/Year Selector */}

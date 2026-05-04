@@ -79,30 +79,36 @@ router.post('/records', auth, authorizeMember(['OWNER', 'ADMIN', 'EDITOR']), asy
       year
     });
 
-    // Create pending tasks for TDS Return & Payment
-    const qTaskExists = await (prisma as any).complianceTask.findFirst({ where: { companyId, type: 'TDS Return', quarter, year } });
-    if (!qTaskExists) {
-      let dueDate = new Date();
-      if (quarter === 1) dueDate = new Date(year, 6, 31);
-      else if (quarter === 2) dueDate = new Date(year, 9, 31);
-      else if (quarter === 3) dueDate = new Date(year + 1, 0, 31);
-      else if (quarter === 4) dueDate = new Date(year + 1, 4, 31);
-      
-      await (prisma as any).complianceTask.create({ data: { companyId, type: 'TDS Return', desc: `Form 26Q (Q${quarter} FY${year}-${String(year + 1).slice(2)})`, date: dueDate, color: 'purple', status: 'pending', quarter, year } });
-    }
-
-    const m = date.getMonth() + 1;
-    const calYear = date.getFullYear();
-    const nextM = m === 12 ? 1 : m + 1;
-    const nextY = m === 12 ? calYear + 1 : calYear;
-    const monthName = date.toLocaleString('default', { month: 'short' });
-    
-    const pTaskExists = await (prisma as any).complianceTask.findFirst({ where: { companyId, type: 'TDS Payment', month: m, year: calYear } });
-    if (!pTaskExists) {
-      await (prisma as any).complianceTask.create({ data: { companyId, type: 'TDS Payment', desc: `TDS Payment (${monthName} ${calYear})`, date: new Date(nextY, nextM - 1, 7), color: 'red', status: 'pending', month: m, year: calYear } });
-    }
-
     const tdsDeducted = tdsService.calculateTDS(paymentAmount, category);
+
+    try {
+      if ((prisma as any).complianceTask) {
+        const qTaskExists = await (prisma as any).complianceTask.findFirst({ where: { companyId, type: 'TDS Return', quarter, year } });
+        if (!qTaskExists) {
+          let dueDate = new Date();
+          if (quarter === 1) dueDate = new Date(year, 6, 31);
+          else if (quarter === 2) dueDate = new Date(year, 9, 31);
+          else if (quarter === 3) dueDate = new Date(year + 1, 0, 31);
+          else if (quarter === 4) dueDate = new Date(year + 1, 4, 31);
+          await (prisma as any).complianceTask.create({ data: { companyId, type: 'TDS Return', desc: `Form 26Q (Q${quarter} FY${year}-${String(year + 1).slice(2)})`, date: dueDate, color: 'purple', status: 'pending', quarter, year } });
+        }
+        const m = date.getMonth() + 1;
+        const calYear = date.getFullYear();
+        const nextM = m === 12 ? 1 : m + 1;
+        const nextY = m === 12 ? calYear + 1 : calYear;
+        const monthName = date.toLocaleString('default', { month: 'short' });
+        const pTaskExists = await (prisma as any).complianceTask.findFirst({ where: { companyId, type: 'TDS Payment', month: m, year: calYear } });
+        if (!pTaskExists) {
+          await (prisma as any).complianceTask.create({ data: { companyId, type: 'TDS Payment', desc: `TDS Payment (${monthName} ${calYear})`, date: new Date(nextY, nextM - 1, 7), color: 'red', status: 'pending', month: m, year: calYear } });
+        }
+      }
+      if ((prisma as any).auditLog) {
+        await (prisma as any).auditLog.create({
+          data: { companyId, userId: req.userId!, action: 'CREATE_TDS', details: `Recorded TDS payment for ${vendorName} (INR ${paymentAmount})` }
+        });
+      }
+    } catch(e) { console.warn('Task/Audit skipped'); }
+
     res.status(201).json({
       success: true,
       tdsRecord,
@@ -123,6 +129,15 @@ router.put('/records/:id', auth, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { vendorName, vendorPan, paymentDate, paymentAmount, category } = req.body;
+
+    if (Number(paymentAmount) <= 0) {
+      return res.status(400).json({ error: 'Payment amount must be greater than 0' });
+    }
+
+    const panPattern = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
+    if (vendorPan && !panPattern.test(vendorPan)) {
+      return res.status(400).json({ error: 'Invalid Vendor PAN format' });
+    }
 
     const record = await prisma.tDSRecord.findUnique({ where: { id } });
     if (!record) return res.status(404).json({ error: 'TDS record not found' });
@@ -159,6 +174,14 @@ router.put('/records/:id', auth, async (req: Request, res: Response) => {
       }
     });
 
+    try {
+      if ((prisma as any).auditLog) {
+        await (prisma as any).auditLog.create({
+          data: { companyId: record.companyId, userId: req.userId!, action: 'UPDATE_TDS', details: `Updated TDS payment for ${vendorName}` }
+        });
+      }
+    } catch(e) {}
+
     res.json({ success: true, record: updatedRecord });
   } catch (error) {
     console.error('Update TDS record error:', error);
@@ -173,7 +196,7 @@ router.delete('/records/:id', auth, async (req: Request, res: Response) => {
 
     const record = await prisma.tDSRecord.findUnique({
       where: { id },
-      select: { companyId: true },
+      select: { companyId: true, vendorName: true },
     });
 
     if (!record) {
@@ -190,6 +213,14 @@ router.delete('/records/:id', auth, async (req: Request, res: Response) => {
     await prisma.tDSRecord.delete({
       where: { id }
     });
+
+    try {
+      if ((prisma as any).auditLog) {
+        await (prisma as any).auditLog.create({
+          data: { companyId: record.companyId, userId: req.userId!, action: 'DELETE_TDS', details: `Deleted TDS payment for ${record.vendorName}` }
+        });
+      }
+    } catch(e) {}
 
     res.json({
       success: true,

@@ -11,7 +11,7 @@ export default function ReportsPage() {
   const selectedCompany = companies.find(c => c.id === selectedCompanyId) || null;
   
   const [loading, setLoading] = useState(false);
-  const [year, setYear] = useState(new Date().getFullYear());
+  const [year, setYear] = useState(new Date().getMonth() + 1 >= 4 ? new Date().getFullYear() : new Date().getFullYear() - 1);
   const [reportData, setReportData] = useState<any>(null);
   const reportRef = useRef<HTMLDivElement>(null);
 

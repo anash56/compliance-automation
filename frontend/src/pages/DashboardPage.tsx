@@ -16,7 +16,7 @@ const selectedCompany = companies.find(company => company.id === selectedCompany
 const [loading, setLoading] = useState(false);
 const [showCompanyForm, setShowCompanyForm] = useState(false);
 const [editingCompany, setEditingCompany] = useState(false);
-const [year, setYear] = useState(new Date().getFullYear());
+const [year, setYear] = useState(new Date().getMonth() + 1 >= 4 ? new Date().getFullYear() : new Date().getFullYear() - 1);
 const [showTeamModal, setShowTeamModal] = useState(false);
 const [teamMembers, setTeamMembers] = useState<any[]>([]);
 const [inviteEmail, setInviteEmail] = useState('');
@@ -240,11 +240,11 @@ return (
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">GST Number</label>
-                <input type="text" value={formData.gstNumber} onChange={(e) => setFormData({ ...formData, gstNumber: e.target.value.toUpperCase() })} maxLength={15} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
+                <input type="text" value={formData.gstNumber} onChange={(e) => setFormData({ ...formData, gstNumber: e.target.value.toUpperCase() })} maxLength={15} pattern="^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$" title="Must be a valid 15-character GSTIN" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">PAN Number</label>
-                <input type="text" value={formData.pan} onChange={(e) => setFormData({ ...formData, pan: e.target.value.toUpperCase() })} maxLength={10} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
+                <input type="text" value={formData.pan} onChange={(e) => setFormData({ ...formData, pan: e.target.value.toUpperCase() })} maxLength={10} pattern="^[A-Z]{5}[0-9]{4}[A-Z]$" title="Must be a valid 10-character PAN" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
               </div>
             </div>
 

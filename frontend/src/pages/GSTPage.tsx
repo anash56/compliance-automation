@@ -20,7 +20,6 @@ const [activeTab, setActiveTab] = useState('invoices');
 const [searchQuery, setSearchQuery] = useState('');
 const [currentPage, setCurrentPage] = useState(1);
 const [totalPages, setTotalPages] = useState(1);
-const [selectedInvoices, setSelectedInvoices] = useState<Set<string>>(new Set());
 const [editingInvoice, setEditingInvoice] = useState<any>(null);
 const itemsPerPage = 10;
 const { showToast } = useToast();
@@ -31,7 +30,6 @@ fetchCompanies();
 
 useEffect(() => {
 if (selectedCompany) {
-setSelectedInvoices(new Set());
 fetchInvoices(selectedCompany.id, currentPage, searchQuery);
 } else {
 setInvoices([]);
@@ -42,7 +40,6 @@ useEffect(() => {
   const delayDebounceFn = setTimeout(() => {
     if (selectedCompany) {
       setCurrentPage(1);
-      setSelectedInvoices(new Set());
       fetchInvoices(selectedCompany.id, 1, searchQuery);
     }
   }, 500);
@@ -77,15 +74,6 @@ const fetchInvoices = async (companyId: string, page: number = 1, search: string
   } finally {
     setLoading(false);
   }
-};
-const toggleInvoiceSelection = (id: string) => {
-  const newSelection = new Set(selectedInvoices);
-  if (newSelection.has(id)) {
-    newSelection.delete(id);
-  } else {
-    newSelection.add(id);
-  }
-  setSelectedInvoices(newSelection);
 };
 const handleDeleteInvoice = async (invoiceId: string) => {
 if (!window.confirm('Delete this invoice?')) return;
@@ -125,25 +113,31 @@ showToast(error.response?.data?.error || 'Failed to delete some invoices', 'erro
 setLoading(false);
 }
 };
-const handleDeleteSelectedInvoices = async () => {
-if (!window.confirm(`Are you sure you want to delete ${selectedInvoices.size} selected invoices?`)) return;
-setLoading(true);
-try {
-  const selectedArray = Array.from(selectedInvoices);
-  for (let i = 0; i < selectedArray.length; i += 10) {
-    const chunk = selectedArray.slice(i, i + 10);
-    await Promise.all(chunk.map((id: string) => api.delete(`/invoices/${id}`)));
+const handleExportCSV = () => {
+  if (invoices.length === 0) {
+    showToast('No invoices available to export.', 'error');
+    return;
   }
-  showToast('Selected invoices deleted successfully');
-  setSelectedInvoices(new Set());
-  if (selectedCompany) {
-    fetchInvoices(selectedCompany.id, currentPage, searchQuery);
-  }
-} catch (error: any) {
-showToast(error.response?.data?.error || 'Failed to delete selected invoices', 'error');
-} finally {
-setLoading(false);
-}
+  const headers = ['Invoice Number', 'Vendor Name', 'Vendor GST', 'Invoice Date', 'Amount (INR)', 'GST Rate (%)', 'Total Tax (INR)', 'Type', 'State'];
+  const csvRows = invoices.map(inv => [
+    inv.invoiceNumber,
+    `"${inv.vendorName}"`,
+    inv.vendorGst || '',
+    new Date(inv.invoiceDate).toLocaleDateString(),
+    inv.amount,
+    inv.gstRate,
+    inv.totalTax,
+    inv.invoiceType,
+    inv.state
+  ]);
+  const csvContent = [headers.join(','), ...csvRows.map(row => row.join(','))].join('\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.setAttribute('download', `Invoices_${selectedCompany?.companyName || 'Export'}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 };
 return (
 <>
@@ -212,16 +206,13 @@ return (
                       <h3 className="text-lg font-semibold">Invoices</h3>
                     </div>
                     <div className="flex gap-2">
-                      {canEdit && selectedInvoices.size > 0 && (
-                        <button
-                          onClick={handleDeleteSelectedInvoices}
-                          disabled={loading}
-                          className="px-3 py-1 text-xs font-semibold text-white bg-red-600 rounded shadow hover:bg-red-700 disabled:opacity-50 transition"
-                        >
-                          Delete Selected ({selectedInvoices.size})
-                        </button>
-                      )}
-                      {canEdit && invoices.length > 0 && selectedInvoices.size === 0 && (
+                      <button
+                        onClick={handleExportCSV}
+                        className="px-3 py-1 text-xs font-semibold text-green-700 bg-green-50 border border-green-200 rounded hover:bg-green-100 transition"
+                      >
+                        Export CSV
+                      </button>
+                      {canEdit && invoices.length > 0 && (
                         <button
                           onClick={handleDeleteAllInvoices}
                           disabled={loading}
@@ -248,14 +239,6 @@ return (
                       invoices.map(inv => (
                         <div key={inv.id} className="p-3 bg-gray-50 rounded-lg border border-gray-200 hover:border-blue-300 transition relative">
                           <div className="flex items-start gap-3">
-                            {canEdit && (
-                              <input 
-                                type="checkbox" 
-                                checked={selectedInvoices.has(inv.id)}
-                                onChange={() => toggleInvoiceSelection(inv.id)}
-                                className="mt-1 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
-                              />
-                            )}
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-semibold text-gray-900 truncate" title={inv.vendorName}>{inv.vendorName}</p>
                               <p className="text-xs text-gray-600 mt-1">INR {inv.amount.toLocaleString()} @ {inv.gstRate}%</p>
@@ -314,7 +297,7 @@ return (
           )}
 
           {activeTab === 'gst' && (
-            <GSTModule companyId={selectedCompany.id} invoices={invoices} />
+            <GSTModule companyId={selectedCompany.id} />
           )}
         </>
       )}

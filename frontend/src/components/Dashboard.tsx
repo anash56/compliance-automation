@@ -26,8 +26,9 @@ export default function Dashboard({ company, year }: DashboardProps) {
     totalTdsDeducted: 0,
     totalTdsDeposited: 0,
     estimatedComplianceOutflow: 0,
-    upcomingDeadlines: [],
-    monthlyData: [] as any[]
+    upcomingDeadlines: [] as any[],
+    monthlyData: [] as any[],
+    auditLogs: [] as any[]
   });
   const [loading, setLoading] = useState(true);
 
@@ -206,6 +207,37 @@ export default function Dashboard({ company, year }: DashboardProps) {
       {/* Compliance Calendar */}
       {!loading && company && (
         <ComplianceCalendar customDeadlines={stats.upcomingDeadlines} onUpdateStatus={handleUpdateTaskStatus} />
+      )}
+
+      {/* Recent Activity (Audit Logs) */}
+      {!loading && company && stats.auditLogs && stats.auditLogs.length > 0 && (
+        <div className="bg-white p-6 rounded-lg border border-gray-200">
+          <h3 className="text-lg font-semibold mb-4">Activity Log</h3>
+          <div className="space-y-4">
+            {stats.auditLogs.map((log: any) => (
+              <div key={log.id} className="flex items-start gap-4 pb-4 border-b border-gray-100 last:border-0 last:pb-0">
+                <div className="bg-gray-100 p-2 rounded-full mt-1">
+                  <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm text-gray-900">
+                    <span className="font-semibold">{log.user.fullName}</span> {log.details}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {new Date(log.createdAt).toLocaleString('en-IN', {
+                      month: 'short',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );

@@ -39,7 +39,6 @@ const [error, setError] = useState('');
 const [success, setSuccess] = useState('');
 const [searchQuery, setSearchQuery] = useState('');
 const [currentPage, setCurrentPage] = useState(1);
-const [selectedRecords, setSelectedRecords] = useState<Set<string>>(new Set());
 const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
 const itemsPerPage = 10;
 const form26qRef = useRef<HTMLDivElement>(null);
@@ -71,7 +70,6 @@ const fetchTDSRecords = async (q = quarter, y = year) => {
 
 useEffect(() => {
   setCurrentPage(1);
-  setSelectedRecords(new Set());
 }, [searchQuery, quarter, year]);
 
 const filteredRecords = tdsRecords.filter(record => 
@@ -206,35 +204,30 @@ try {
   setLoading(false);
 }
 };
-const toggleSelection = (id: string) => {
-  const newSelection = new Set(selectedRecords);
-  if (newSelection.has(id)) {
-    newSelection.delete(id);
-  } else {
-    newSelection.add(id);
+const handleExportCSV = () => {
+  if (filteredRecords.length === 0) {
+    setError('No records available to export.');
+    return;
   }
-  setSelectedRecords(newSelection);
-};
-const handleDeleteSelectedRecords = async () => {
-if (!window.confirm(`Are you sure you want to delete ${selectedRecords.size} selected records?`)) return;
-setLoading(true);
-setError('');
-setSuccess('');
-try {
-  const selectedArray = Array.from(selectedRecords);
-  for (let i = 0; i < selectedArray.length; i += 10) {
-    const chunk = selectedArray.slice(i, i + 10);
-    await Promise.all(chunk.map(id => api.delete(`/tds/records/${id}`)));
-  }
-  setSuccess('Selected TDS records deleted successfully.');
-  setSelectedRecords(new Set());
-  fetchTDSRecords();
-  setTimeout(() => setSuccess(''), 3000);
-} catch (err: any) {
-  setError(err.response?.data?.error || 'Failed to delete selected records');
-} finally {
-  setLoading(false);
-}
+  const headers = ['Vendor Name', 'Vendor PAN', 'Payment Date', 'Category', 'Payment Amount (INR)', 'TDS Rate (%)', 'TDS Deducted (INR)', 'Net Payment (INR)'];
+  const csvRows = filteredRecords.map(r => [
+    `"${r.vendorName}"`,
+    r.vendorPan || '',
+    new Date(r.paymentDate).toLocaleDateString(),
+    r.category,
+    r.paymentAmount,
+    r.tdsRate,
+    r.tdsDeducted,
+    r.paymentMade
+  ]);
+  const csvContent = [headers.join(','), ...csvRows.map(row => row.join(','))].join('\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.setAttribute('download', `TDS_Records_Q${quarter}_${year}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 };
 const handleGenerateForm26Q = async () => {
 setLoading(true);
@@ -448,106 +441,107 @@ className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:
           <div className="grid grid-cols-2 gap-4 mb-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-            Vendor Name *
-          </label>
-          <input
-            type="text"
-            value={formData.vendorName}
-            onChange={(e) => setFormData({ ...formData, vendorName: e.target.value })}
-            required
-            placeholder="Enter vendor name"
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Vendor PAN
-          </label>
-          <input
-            type="text"
-            value={formData.vendorPan}
-            onChange={(e) => setFormData({ ...formData, vendorPan: e.target.value.toUpperCase() })}
-            placeholder="ABCDE1234F"
-            maxLength={10}
-            pattern="[A-Z]{5}[0-9]{4}[A-Z]"
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Payment Amount (INR) *
-          </label>
-          <input
-            type="number"
-            value={formData.paymentAmount}
-            onChange={(e) => setFormData({ ...formData, paymentAmount: e.target.value })}
-            required
-            placeholder="50000"
-            step="0.01"
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Category *
-          </label>
-          <select
-            value={formData.category}
-            onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="services">Services (10%)</option>
-            <option value="goods">Goods (15%)</option>
-            <option value="commission">Commission (10%)</option>
-            <option value="rent">Rent (10%)</option>
-            <option value="other">Other (10%)</option>
-          </select>
-        </div>
-
-        <div className="col-span-2">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Payment Date *
-          </label>
-          <input
-            type="date"
-            value={formData.paymentDate}
-            onChange={(e) => setFormData({ ...formData, paymentDate: e.target.value })}
-            required
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-      </div>
-
-      {formData.paymentAmount && (
-        <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <p className="text-xs text-gray-600">TDS Rate</p>
-              <p className="text-lg font-bold text-blue-600">{TDS_RATES[formData.category]}%</p>
+                Vendor Name *
+              </label>
+              <input
+                type="text"
+                value={formData.vendorName}
+                onChange={(e) => setFormData({ ...formData, vendorName: e.target.value })}
+                required
+                placeholder="Enter vendor name"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
             </div>
+
             <div>
-              <p className="text-xs text-gray-600">TDS Amount</p>
-              <p className="text-lg font-bold text-blue-600">INR {calculateTdsAmount(parseFloat(formData.paymentAmount)).toFixed(2)}</p>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Vendor PAN
+              </label>
+              <input
+                type="text"
+                value={formData.vendorPan}
+                onChange={(e) => setFormData({ ...formData, vendorPan: e.target.value.toUpperCase() })}
+                placeholder="ABCDE1234F"
+                maxLength={10}
+                pattern="[A-Z]{5}[0-9]{4}[A-Z]"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
             </div>
+
             <div>
-              <p className="text-xs text-gray-600">Net Payment</p>
-              <p className="text-lg font-bold text-blue-600">INR {(parseFloat(formData.paymentAmount) - calculateTdsAmount(parseFloat(formData.paymentAmount))).toFixed(2)}</p>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Payment Amount (INR) *
+              </label>
+              <input
+                type="number"
+                value={formData.paymentAmount}
+                onChange={(e) => setFormData({ ...formData, paymentAmount: e.target.value })}
+                required
+                placeholder="50000"
+                step="0.01"
+                min="0.01"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Category *
+              </label>
+              <select
+                value={formData.category}
+                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="services">Services (10%)</option>
+                <option value="goods">Goods (15%)</option>
+                <option value="commission">Commission (10%)</option>
+                <option value="rent">Rent (10%)</option>
+                <option value="other">Other (10%)</option>
+              </select>
+            </div>
+
+            <div className="col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Payment Date *
+              </label>
+              <input
+                type="date"
+                value={formData.paymentDate}
+                onChange={(e) => setFormData({ ...formData, paymentDate: e.target.value })}
+                required
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
             </div>
           </div>
-        </div>
-      )}
 
-      <div className="flex gap-2">
-        <button
-          type="submit"
-          disabled={loading}
-          className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 font-semibold transition"
-        >
-          {loading ? 'Saving...' : editingRecordId ? 'Update Payment' : 'Record Payment'}
-        </button>
+          {formData.paymentAmount && (
+            <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <p className="text-xs text-gray-600">TDS Rate</p>
+                  <p className="text-lg font-bold text-blue-600">{TDS_RATES[formData.category]}%</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-600">TDS Amount</p>
+                  <p className="text-lg font-bold text-blue-600">INR {calculateTdsAmount(parseFloat(formData.paymentAmount)).toFixed(2)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-600">Net Payment</p>
+                  <p className="text-lg font-bold text-blue-600">INR {(parseFloat(formData.paymentAmount) - calculateTdsAmount(parseFloat(formData.paymentAmount))).toFixed(2)}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              disabled={loading}
+              className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 font-semibold transition"
+            >
+              {loading ? 'Saving...' : editingRecordId ? 'Update Payment' : 'Record Payment'}
+            </button>
             <button
               type="button"
               onClick={() => {
@@ -579,15 +573,13 @@ className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:
       <div className="flex justify-between items-center mb-4">
         <h3 className="text-lg font-semibold">TDS Payment Records ({filteredRecords.length})</h3>
         <div className="flex items-center gap-2">
-          {canEdit && selectedRecords.size > 0 ? (
-            <button
-              onClick={handleDeleteSelectedRecords}
-              disabled={loading}
-              className="px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded shadow hover:bg-red-700 disabled:opacity-50 transition"
-            >
-              Delete Selected ({selectedRecords.size})
-            </button>
-          ) : canEdit && paginatedRecords.length > 0 ? (
+          <button
+            onClick={handleExportCSV}
+            className="px-4 py-2 text-sm font-semibold text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition"
+          >
+            Export CSV
+          </button>
+          {canEdit && paginatedRecords.length > 0 && (
             <button
               onClick={handleDeleteAllRecords}
               disabled={loading}
@@ -595,7 +587,7 @@ className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:
             >
               Delete All
             </button>
-          ) : null}
+          )}
           <input
             type="text"
             placeholder="Search vendor or PAN..."
@@ -609,9 +601,6 @@ className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b-2 border-gray-300">
-              {canEdit && (
-                <th className="py-3 px-2 w-10"></th>
-              )}
               <th className="text-left py-3 font-semibold text-gray-700">Vendor</th>
               <th className="text-left py-3 font-semibold text-gray-700">Date</th>
               <th className="text-right py-3 font-semibold text-gray-700">Payment Amount</th>
@@ -627,20 +616,10 @@ className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:
           <tbody>
             {paginatedRecords.length === 0 ? (
               <tr>
-                <td colSpan={canEdit ? 9 : 8} className="text-center py-8 text-gray-500">No records found matching your search.</td>
+                <td colSpan={canEdit ? 8 : 7} className="text-center py-8 text-gray-500">No records found matching your search.</td>
               </tr>
             ) : paginatedRecords.map((record, idx) => (
               <tr key={record.id} className={idx % 2 === 0 ? 'bg-gray-50 hover:bg-gray-100 transition' : 'bg-white hover:bg-gray-50 transition'}>
-                {canEdit && (
-                  <td className="py-3 px-2 text-center">
-                    <input
-                      type="checkbox"
-                      checked={selectedRecords.has(record.id)}
-                      onChange={() => toggleSelection(record.id)}
-                      className="rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
-                    />
-                  </td>
-                )}
                 <td className="py-3">{record.vendorName}</td>
                 <td className="py-3">{new Date(record.paymentDate).toLocaleDateString()}</td>
                 <td className="text-right py-3">INR {Number(record.paymentAmount).toLocaleString()}</td>
@@ -675,11 +654,11 @@ className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:
           </tbody>
           <tfoot>
             <tr className="border-t-2 border-gray-300 bg-gray-50">
-              <td colSpan={canEdit ? 3 : 2} className="py-3 font-semibold text-center">Total</td>
+              <td colSpan={2} className="py-3 font-semibold text-center">Total</td>
               <td className="text-right py-3 font-semibold">
                 INR {filteredRecords.reduce((sum, r) => sum + Number(r.paymentAmount), 0).toLocaleString()}
               </td>
-              <td colSpan={1}></td>
+              <td></td>
               <td></td>
               <td className="text-right py-3 font-semibold text-red-600">
                 INR {filteredRecords.reduce((sum, r) => sum + Number(r.tdsDeducted), 0).toLocaleString()}
@@ -687,7 +666,7 @@ className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:
               <td className="text-right py-3 font-semibold text-green-600">
                 INR {filteredRecords.reduce((sum, r) => sum + Number(r.paymentMade), 0).toLocaleString()}
               </td>
-              <td></td>
+              {canEdit && <td></td>}
             </tr>
           </tfoot>
         </table>

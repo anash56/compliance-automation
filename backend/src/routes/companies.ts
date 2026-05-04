@@ -227,126 +227,128 @@ router.get('/:id/dashboard', auth, authorizeMember(['OWNER', 'ADMIN', 'EDITOR', 
     }, 0);
     const tdsReturnsFiled = tdsReturns.filter((tdsReturn) => tdsReturn.filingStatus === 'submitted').length;
 
-    // Dynamic Deadlines Calculation based on actual data
-    const upcomingDeadlines: any[] = [];
-    const now = new Date();
-
-    // 1. Group invoices by month/year to find pending GST returns
-    const invoiceMonths = new Set<string>();
-    invoices.forEach((inv) => {
-      const d = new Date(inv.invoiceDate);
-      invoiceMonths.add(`${d.getMonth() + 1}-${d.getFullYear()}`);
-    });
-
-    // Always include the strictly previous real-world month if they have a GST number (for Nil returns)
-    if (hasGst) {
-      const prevM = now.getMonth() === 0 ? 12 : now.getMonth();
-      const prevY = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
-      invoiceMonths.add(`${prevM}-${prevY}`);
+    let auditLogs = [];
+    try {
+      if ((prisma as any).auditLog) {
+        auditLogs = await (prisma as any).auditLog.findMany({
+          where: { companyId: id },
+          include: { user: { select: { fullName: true } } },
+          orderBy: { createdAt: 'desc' },
+          take: 10
+        });
+      }
+    } catch (e) {
+      console.warn('AuditLog table missing or query failed - skipping');
     }
 
-    invoiceMonths.forEach(my => {
-      const [mStr, yStr] = my.split('-');
-      const m = parseInt(mStr);
-      const y = parseInt(yStr);
-
-      const gstReturn = gstReturns.find((r) => r.month === m && r.year === y);
-      const gstr1Filed = gstReturn?.gstr1Status === 'submitted' || gstReturn?.gstr1FiledDate;
-      const gstr3bFiled = gstReturn?.gstr3bStatus === 'submitted' || gstReturn?.gstr3bFiledDate;
-
-      const nextM = m === 12 ? 1 : m + 1;
-      const nextY = m === 12 ? y + 1 : y;
-      const monthName = new Date(y, m - 1).toLocaleString('default', { month: 'short' });
-
-      if (!gstr1Filed) {
-        upcomingDeadlines.push({
-          date: new Date(nextY, nextM - 1, 11).toISOString(),
-          type: 'GST Filing',
-          desc: `GSTR-1 (${monthName} ${y})`,
-          color: 'orange',
-          status: 'pending'
+    // Fetch Compliance Tasks from the Database
+    let upcomingDeadlines: any[] = [];
+    try {
+      if ((prisma as any).complianceTask) {
+        upcomingDeadlines = await (prisma as any).complianceTask.findMany({
+          where: { companyId: id },
+          orderBy: { date: 'asc' }
         });
       }
+    } catch (e) {
+      console.warn('ComplianceTask table missing or query failed - skipping');
+    }
 
-      if (!gstr3bFiled) {
-        upcomingDeadlines.push({
-          date: new Date(nextY, nextM - 1, 20).toISOString(),
-          type: 'GST Payment',
-          desc: `GSTR-3B (${monthName} ${y})`,
-          color: 'yellow',
-          status: 'pending'
-        });
+    // Auto-heal / Backfill Tasks for existing data if none exist yet
+    const hasSystemTasks = upcomingDeadlines.some((t: any) => t.type !== 'Custom Task');
+    if (!hasSystemTasks && (invoices.length > 0 || tdsRecords.length > 0)) {
+      const newTasks: any[] = [];
+      const now = new Date();
+      
+      const invoiceMonths = new Set<string>();
+      invoices.forEach((inv) => {
+        const d = new Date(inv.invoiceDate);
+        invoiceMonths.add(`${d.getMonth() + 1}-${d.getFullYear()}`);
+      });
+      if (hasGst) {
+        const prevM = now.getMonth() === 0 ? 12 : now.getMonth();
+        const prevY = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+        invoiceMonths.add(`${prevM}-${prevY}`);
       }
-    });
 
-    // 2. Group TDS records by Quarter to find pending Form 26Q returns
-    const tdsQuarters = new Set<string>();
-    tdsRecords.forEach((tds) => {
-      const d = new Date(tds.paymentDate);
-      const m = d.getMonth() + 1;
-      const q = m >= 4 && m <= 6 ? 1 : m >= 7 && m <= 9 ? 2 : m >= 10 && m <= 12 ? 3 : 4;
-      const fY = m >= 4 ? d.getFullYear() : d.getFullYear() - 1;
-      tdsQuarters.add(`${q}-${fY}`);
-    });
+      invoiceMonths.forEach(my => {
+        const [mStr, yStr] = my.split('-');
+        const m = parseInt(mStr);
+        const y = parseInt(yStr);
+        const gstReturn = gstReturns.find((r) => r.month === m && r.year === y);
+        const gstr1Filed = gstReturn?.gstr1Status === 'submitted' || gstReturn?.gstr1FiledDate;
+        const gstr3bFiled = gstReturn?.gstr3bStatus === 'submitted' || gstReturn?.gstr3bFiledDate;
+        const nextM = m === 12 ? 1 : m + 1;
+        const nextY = m === 12 ? y + 1 : y;
+        const monthName = new Date(y, m - 1).toLocaleString('default', { month: 'short' });
 
-    tdsQuarters.forEach(qy => {
-      const [qStr, yStr] = qy.split('-');
-      const q = parseInt(qStr);
-      const fY = parseInt(yStr);
+        newTasks.push({ companyId: id, type: 'GST Filing', desc: `GSTR-1 (${monthName} ${y})`, date: new Date(nextY, nextM - 1, 11), color: 'orange', status: gstr1Filed ? 'completed' : 'pending', month: m, year: y });
+        newTasks.push({ companyId: id, type: 'GST Payment', desc: `GSTR-3B (${monthName} ${y})`, date: new Date(nextY, nextM - 1, 20), color: 'yellow', status: gstr3bFiled ? 'completed' : 'pending', month: m, year: y });
+      });
 
-      const tdsReturn = tdsReturns.find((r) => r.quarter === q && r.year === fY);
-      const isFiled = tdsReturn?.filingStatus === 'submitted';
+      const tdsQuarters = new Set<string>();
+      tdsRecords.forEach((tds) => {
+        const d = new Date(tds.paymentDate);
+        const m = d.getMonth() + 1;
+        const q = m >= 4 && m <= 6 ? 1 : m >= 7 && m <= 9 ? 2 : m >= 10 && m <= 12 ? 3 : 4;
+        const fY = m >= 4 ? d.getFullYear() : d.getFullYear() - 1;
+        tdsQuarters.add(`${q}-${fY}`);
+      });
 
-      if (!isFiled) {
+      tdsQuarters.forEach(qy => {
+        const [qStr, yStr] = qy.split('-');
+        const q = parseInt(qStr);
+        const fY = parseInt(yStr);
+        const tdsReturn = tdsReturns.find((r) => r.quarter === q && r.year === fY);
+        const isFiled = tdsReturn?.filingStatus === 'submitted';
+
         let dueDate;
-        if (q === 1) dueDate = new Date(fY, 6, 31); // July 31
-        else if (q === 2) dueDate = new Date(fY, 9, 31); // Oct 31
-        else if (q === 3) dueDate = new Date(fY + 1, 0, 31); // Jan 31
-        else if (q === 4) dueDate = new Date(fY + 1, 4, 31); // May 31
+        if (q === 1) dueDate = new Date(fY, 6, 31);
+        else if (q === 2) dueDate = new Date(fY, 9, 31);
+        else if (q === 3) dueDate = new Date(fY + 1, 0, 31);
+        else if (q === 4) dueDate = new Date(fY + 1, 4, 31);
 
         if (dueDate) {
-          upcomingDeadlines.push({
-            date: dueDate.toISOString(),
-            type: 'TDS Return',
-            desc: `Form 26Q (Q${q} FY${fY}-${String(fY + 1).slice(2)})`,
-            color: 'purple',
-            status: 'pending'
-          });
+          newTasks.push({ companyId: id, type: 'TDS Return', desc: `Form 26Q (Q${q} FY${fY}-${String(fY + 1).slice(2)})`, date: dueDate, color: 'purple', status: isFiled ? 'completed' : 'pending', quarter: q, year: fY });
+        }
+      });
+
+      const tdsMonths = new Set<string>();
+      tdsRecords.forEach((tds) => {
+        const d = new Date(tds.paymentDate);
+        tdsMonths.add(`${d.getMonth() + 1}-${d.getFullYear()}`);
+      });
+
+      tdsMonths.forEach(my => {
+        const [mStr, yStr] = my.split('-');
+        const m = parseInt(mStr);
+        const y = parseInt(yStr);
+        const nextM = m === 12 ? 1 : m + 1;
+        const nextY = m === 12 ? y + 1 : y;
+        const q = m >= 4 && m <= 6 ? 1 : m >= 7 && m <= 9 ? 2 : m >= 10 && m <= 12 ? 3 : 4;
+        const fY = m >= 4 ? y : y - 1;
+        const tdsReturn = tdsReturns.find((r) => r.quarter === q && r.year === fY);
+        const isQuarterFiled = tdsReturn?.filingStatus === 'submitted';
+
+        newTasks.push({ companyId: id, type: 'TDS Payment', desc: `TDS Payment (${new Date(y, m - 1).toLocaleString('default', { month: 'short' })} ${y})`, date: new Date(nextY, nextM - 1, 7), color: 'red', status: isQuarterFiled ? 'completed' : 'pending', month: m, year: y });
+      });
+
+      if (newTasks.length > 0) {
+        try {
+          if ((prisma as any).complianceTask) {
+            await (prisma as any).complianceTask.createMany({ data: newTasks });
+            upcomingDeadlines = await (prisma as any).complianceTask.findMany({
+              where: { companyId: id },
+              orderBy: { date: 'asc' }
+            });
+          } else {
+            upcomingDeadlines = [...upcomingDeadlines, ...newTasks];
+          }
+        } catch (e) {
+          upcomingDeadlines = [...upcomingDeadlines, ...newTasks];
         }
       }
-    });
-
-    // 3. Monthly TDS Payment deadlines (7th of next month)
-    const tdsMonths = new Set<string>();
-    tdsRecords.forEach((tds) => {
-      const d = new Date(tds.paymentDate);
-      tdsMonths.add(`${d.getMonth() + 1}-${d.getFullYear()}`);
-    });
-
-    tdsMonths.forEach(my => {
-      const [mStr, yStr] = my.split('-');
-      const m = parseInt(mStr);
-      const y = parseInt(yStr);
-      
-      const nextM = m === 12 ? 1 : m + 1;
-      const nextY = m === 12 ? y + 1 : y;
-      
-      const q = m >= 4 && m <= 6 ? 1 : m >= 7 && m <= 9 ? 2 : m >= 10 && m <= 12 ? 3 : 4;
-      const fY = m >= 4 ? y : y - 1;
-
-      const tdsReturn = tdsReturns.find((r) => r.quarter === q && r.year === fY);
-      const isQuarterFiled = tdsReturn?.filingStatus === 'submitted';
-
-      if (!isQuarterFiled) {
-        upcomingDeadlines.push({
-          date: new Date(nextY, nextM - 1, 7).toISOString(),
-          type: 'TDS Payment',
-          desc: `TDS Payment (${new Date(y, m - 1).toLocaleString('default', { month: 'short' })} ${y})`,
-          color: 'red',
-          status: 'pending'
-        });
-      }
-    });
+    }
 
     res.json({
       success: true,
@@ -363,7 +365,8 @@ router.get('/:id/dashboard', auth, authorizeMember(['OWNER', 'ADMIN', 'EDITOR', 
         totalTdsDeposited: Math.round(totalTdsDeposited * 100) / 100,
         estimatedComplianceOutflow: Math.round((totalGstCollected + totalTdsDeposited) * 100) / 100,
         upcomingDeadlines,
-        monthlyData
+        monthlyData,
+        auditLogs
       }
     });
   } catch (error) {
@@ -551,14 +554,38 @@ router.get('/:id/invoices/paginated', auth, authorizeMember(['OWNER', 'ADMIN', '
 router.put('/:id/tasks/:taskId/status', auth, authorizeMember(['OWNER', 'ADMIN', 'EDITOR']), async (req: Request, res: Response) => {
   try {
     const { status } = req.body;
-    const task = await (prisma as any).complianceTask.update({
-      where: { id: req.params.taskId },
-      data: { status }
-    });
+    let task = null;
+    if ((prisma as any).complianceTask) {
+      task = await (prisma as any).complianceTask.update({
+        where: { id: req.params.taskId },
+        data: { status }
+      });
+    }
     res.json({ success: true, task });
   } catch (error) {
     console.error('Update task status error:', error);
     res.status(500).json({ error: 'Failed to update task status' });
+  }
+});
+
+// Create a custom compliance task
+router.post('/:id/tasks', auth, authorizeMember(['OWNER', 'ADMIN', 'EDITOR']), async (req: Request, res: Response) => {
+  try {
+    const { desc, date, color, type } = req.body;
+    const task = await (prisma as any).complianceTask.create({
+      data: {
+        companyId: req.params.id,
+        type: type || 'Custom Task',
+        desc,
+        date: new Date(date),
+        color: color || 'blue',
+        status: 'pending'
+      }
+    });
+    res.json({ success: true, task });
+  } catch (error) {
+    console.error('Create custom task error:', error);
+    res.status(500).json({ error: 'Failed to create custom task' });
   }
 });
 

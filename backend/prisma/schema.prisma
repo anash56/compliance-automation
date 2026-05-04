@@ -38,6 +38,7 @@ model Company {
   tdsReturns      TDSReturn[]
   deadlines       ComplianceDeadline[]
   tasks           ComplianceTask[]
+  auditLogs       AuditLog[]
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -162,6 +163,21 @@ model ComplianceTask {
   updatedAt   DateTime @updatedAt
 }
 
+model AuditLog {
+  id          String   @id @default(cuid())
+  companyId   String
+  userId      String
+  action      String
+  details     String
+  createdAt   DateTime @default(now())
+
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([userId])
+}
+
 model CompanyMember {
   id          String   @id @default(cuid())
   userId      String
@@ -179,4 +195,3 @@ model CompanyMember {
   @@index([userId])
   @@index([companyId])
 }
-

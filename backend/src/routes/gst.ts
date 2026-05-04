@@ -88,10 +88,14 @@ router.post('/gstr1/filed', auth, authorizeMember(['OWNER', 'ADMIN']), async (re
     await gstService.saveGSTReturn(companyId, month, year, gstr1, gstr3b);
     const gstReturn = await gstService.markAsFiledGSTR1(companyId, month, year);
 
-    await (prisma as any).complianceTask.updateMany({
-      where: { companyId, type: 'GST Filing', month, year },
-      data: { status: 'completed' }
-    });
+    try {
+      if ((prisma as any).complianceTask) {
+        await (prisma as any).complianceTask.updateMany({
+          where: { companyId, type: 'GST Filing', month, year },
+          data: { status: 'completed' }
+        });
+      }
+    } catch(e) {}
 
     res.json({
       success: true,
@@ -118,10 +122,14 @@ router.post('/gstr3b/filed', auth, authorizeMember(['OWNER', 'ADMIN']), async (r
     await gstService.saveGSTReturn(companyId, month, year, gstr1, gstr3b);
     const gstReturn = await gstService.markAsFiledGSTR3B(companyId, month, year);
 
-    await (prisma as any).complianceTask.updateMany({
-      where: { companyId, type: 'GST Payment', month, year },
-      data: { status: 'completed' }
-    });
+    try {
+      if ((prisma as any).complianceTask) {
+        await (prisma as any).complianceTask.updateMany({
+          where: { companyId, type: 'GST Payment', month, year },
+          data: { status: 'completed' }
+        });
+      }
+    } catch(e) {}
 
     res.json({
       success: true,

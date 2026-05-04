@@ -120,6 +120,8 @@ export default function CompanyOnboardingPage() {
                 onChange={(e) => setFormData({ ...formData, gstNumber: e.target.value.toUpperCase() })}
                 placeholder="27AABCT1234H1Z0"
                 maxLength={15}
+                pattern="^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$"
+                title="Must be a valid 15-character GSTIN"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -132,6 +134,8 @@ export default function CompanyOnboardingPage() {
                 onChange={(e) => setFormData({ ...formData, pan: e.target.value.toUpperCase() })}
                 placeholder="ABCDE1234F"
                 maxLength={10}
+                pattern="^[A-Z]{5}[0-9]{4}[A-Z]$"
+                title="Must be a valid 10-character PAN"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>

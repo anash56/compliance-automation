@@ -275,11 +275,11 @@ return (
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">Vendor GST</label>
-          <input type="text" name="vendorGst" value={formData.vendorGst} onChange={handleInputChange} placeholder="27AABCT1234H1Z0" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          <input type="text" name="vendorGst" value={formData.vendorGst} onChange={(e) => setFormData({...formData, vendorGst: e.target.value.toUpperCase()})} placeholder="27AABCT1234H1Z0" pattern="^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$" title="Must be a valid 15-character GSTIN" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">Amount (INR) *</label>
-          <input type="number" name="amount" value={formData.amount} onChange={handleInputChange} placeholder="50000" required step="0.01" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          <input type="number" name="amount" value={formData.amount} onChange={handleInputChange} placeholder="50000" required step="0.01" min="0.01" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">GST Rate (%) *</label>
