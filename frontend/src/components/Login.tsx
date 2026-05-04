@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { login, signup, clearError } from '../store/slices/authSlice';
 import { AppDispatch, RootState } from '../store';
+import api from '../services/api';
 
 // Password strength checker
 const getPasswordStrength = (password: string) => {
@@ -40,6 +41,8 @@ export default function Login() {
   const [localError, setLocalError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
   
   const dispatch = useDispatch<AppDispatch>();
   const navigate = useNavigate();
@@ -47,11 +50,14 @@ export default function Login() {
   const { loading, error } = useSelector((state: RootState) => state.auth);
 
   const isSignup = location.pathname === '/signup';
+  const urlParams = new URLSearchParams(location.search);
+  const resetToken = urlParams.get('reset');
 
   useEffect(() => {
     setLocalError('');
     setSuccessMessage('');
     setValidationErrors({});
+    if (!resetToken) setIsForgotPassword(false);
     dispatch(clearError());
   }, [location.pathname, dispatch]);
 
@@ -142,6 +148,53 @@ export default function Login() {
     }
   };
 
+  const handleForgotPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLocalError('');
+    setSuccessMessage('');
+    if (!email) {
+      setLocalError('Please enter your email address');
+      return;
+    }
+    setIsResetting(true);
+    try {
+      const response = await api.post('/auth/forgot-password', { email });
+      if (response.data.success) {
+        setSuccessMessage(response.data.message || 'Password reset link sent to your email.');
+      }
+    } catch (err: any) {
+      setLocalError(err.response?.data?.error || 'Failed to send reset link');
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
+  const handleResetPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLocalError('');
+    setSuccessMessage('');
+    if (!validatePassword(password)) {
+      setLocalError('Password must be at least 8 characters with uppercase, lowercase, and number');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setLocalError('Passwords do not match');
+      return;
+    }
+    setIsResetting(true);
+    try {
+      const response = await api.post('/auth/reset-password', { token: resetToken, newPassword: password });
+      if (response.data.success) {
+        setSuccessMessage('Password reset successfully! Redirecting to login...');
+        setTimeout(() => { navigate('/login'); setPassword(''); setConfirmPassword(''); }, 2000);
+      }
+    } catch (err: any) {
+      setLocalError(err.response?.data?.error || 'Failed to reset password. The link might be expired.');
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
   const displayError = localError || error;
   const passwordStrength = getPasswordStrength(password);
 
@@ -152,7 +205,7 @@ export default function Login() {
           {/* Header */}
           <div className="text-center mb-8">
             <h1 className="text-3xl font-bold text-blue-600 mb-2">ComplianceBot</h1>
-            <p className="text-gray-600">{isSignup ? 'Create Account' : 'Welcome Back'}</p>
+            <p className="text-gray-600">{resetToken ? 'Set New Password' : isForgotPassword ? 'Recover Account' : isSignup ? 'Create Account' : 'Welcome Back'}</p>
           </div>
 
           {/* Success Message */}
@@ -170,6 +223,44 @@ export default function Login() {
           )}
 
           {/* Form */}
+          {resetToken ? (
+            <form onSubmit={handleResetPasswordSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">New Password</label>
+                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${validationErrors.password ? 'border-red-300' : 'border-gray-300'}`} />
+                {password && (
+                  <div className="mt-2 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-gray-600">Strength:</span>
+                      <span className={`text-xs font-semibold ${passwordStrength.color}`}>{passwordStrength.text}</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div className={`h-2 rounded-full transition-all ${passwordStrength.strength === 1 ? 'w-1/5 bg-red-600' : passwordStrength.strength === 2 ? 'w-2/5 bg-orange-600' : passwordStrength.strength === 3 ? 'w-3/5 bg-yellow-600' : passwordStrength.strength === 4 ? 'w-4/5 bg-green-600' : passwordStrength.strength === 5 ? 'w-full bg-green-700' : 'w-0'}`}></div>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Confirm New Password</label>
+                <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="••••••••" className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-300" />
+                {confirmPassword && password && confirmPassword === password && <p className="text-green-600 text-xs mt-1">✓ Passwords match</p>}
+              </div>
+              <button type="submit" disabled={isResetting} className="w-full px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:bg-gray-400 transition duration-200">
+                {isResetting ? 'Resetting...' : 'Set New Password'}
+              </button>
+            </form>
+          ) : isForgotPassword ? (
+            <form onSubmit={handleForgotPasswordSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Email Address</label>
+                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" required className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 border-gray-300" />
+                <p className="text-xs text-gray-500 mt-2">Enter the email associated with your account to receive a reset link.</p>
+              </div>
+              <button type="submit" disabled={isResetting} className="w-full px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:bg-gray-400 transition duration-200">
+                {isResetting ? 'Sending...' : 'Send Reset Link'}
+              </button>
+            </form>
+          ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             {isSignup && (
               <div>
@@ -229,7 +320,7 @@ export default function Login() {
                 }`}
               />
               
-              {isSignup && password && (
+              {(isSignup || resetToken) && password && (
                 <div className="mt-2 space-y-1">
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-gray-600">Strength:</span>
@@ -274,6 +365,11 @@ export default function Login() {
               {validationErrors.password && !isSignup && (
                 <p className="text-red-600 text-xs mt-1">{validationErrors.password}</p>
               )}
+              {!isSignup && !isForgotPassword && (
+                <div className="flex justify-end mt-1">
+                  <button type="button" onClick={() => { setIsForgotPassword(true); setLocalError(''); setSuccessMessage(''); }} className="text-sm text-blue-600 hover:underline font-medium">Forgot Password?</button>
+                </div>
+              )}
             </div>
 
             {isSignup && (
@@ -307,24 +403,18 @@ export default function Login() {
               {loading ? 'Loading...' : isSignup ? 'Create Account' : 'Login'}
             </button>
           </form>
+          )}
 
           {/* Toggle */}
           <p className="text-center text-gray-600 text-sm mt-6">
-            {isSignup ? 'Already have an account? ' : "Don't have an account? "}
-            <button
-              onClick={() => {
-                if (isSignup) {
-                  navigate('/login');
-                } else {
-                  navigate('/signup');
-                }
-                setLocalError('');
-                setValidationErrors({});
-              }}
-              className="text-blue-600 font-semibold hover:underline"
-            >
-              {isSignup ? 'Login' : 'Sign Up'}
-            </button>
+            {resetToken ? (
+              <button onClick={() => navigate('/login')} className="text-blue-600 font-semibold hover:underline">Return to Login</button>
+            ) : isForgotPassword ? (
+              <><span className="text-gray-500">Remember your password?</span> <button onClick={() => { setIsForgotPassword(false); setLocalError(''); setSuccessMessage(''); }} className="text-blue-600 font-semibold hover:underline">Back to Login</button></>
+            ) : (
+              <><span className="text-gray-500">{isSignup ? 'Already have an account? ' : "Don't have an account? "}</span>
+              <button onClick={() => { isSignup ? navigate('/login') : navigate('/signup'); setLocalError(''); setValidationErrors({}); }} className="text-blue-600 font-semibold hover:underline">{isSignup ? 'Login' : 'Sign Up'}</button></>
+            )}
           </p>
 
           {/* Demo Credentials */}
