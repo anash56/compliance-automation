@@ -23,6 +23,9 @@ const PORT = process.env.PORT || 5000;
 // Export prisma for use in other files
 export const prisma = new PrismaClient();
 
+// Trust proxy - CRITICAL for Render load balancers to set secure cookies!
+app.set('trust proxy', 1);
+
 // Middleware
 app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:5173',
