@@ -12,7 +12,7 @@ export const authorizeMember = (requiredRoles: Role[]) => {
     try {
       // The companyId can be in the request parameters, body, or query string.
       const companyId = req.params.id || req.params.companyId || req.body.companyId;
-      const userId = req.userId;
+      const userId = (req as any).userId;
 
       if (!companyId) {
         console.error('Authorization Error: `authorizeMember` middleware was used on a route that does not provide a `companyId`.');

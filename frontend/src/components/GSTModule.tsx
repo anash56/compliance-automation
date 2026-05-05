@@ -3,11 +3,18 @@ import api from '../services/api';
 import { Invoice } from '../types';
 // @ts-ignore
 import html2pdf from 'html2pdf.js/dist/html2pdf.bundle.min.js';
+import { useSelector } from 'react-redux';
+import { RootState } from '../store';
 
 interface GSTModuleProps {
 companyId: string;
 }
 export default function GSTModule({ companyId }: GSTModuleProps) {
+const { companies } = useSelector((state: RootState) => state.company);
+const company = companies.find(c => c.id === companyId);
+const userRole = company?.userRole || 'VIEWER';
+const canEdit = ['OWNER', 'ADMIN', 'EDITOR'].includes(userRole);
+
 const prevMonthDate = new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1);
 const [month, setMonth] = useState(prevMonthDate.getMonth() + 1);
 const [year, setYear] = useState(prevMonthDate.getFullYear());
@@ -195,9 +202,11 @@ className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:
   {/* Invoice List for Selected Month */}
   {!gstr1 && (
     <div className="bg-white p-6 rounded-lg border border-gray-200">
-      <h3 className="text-lg font-semibold mb-4">
-        Invoices for {new Date(year, month - 1).toLocaleString('default', { month: 'long', year: 'numeric' })}
-      </h3>
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-lg font-semibold mb-0">
+          Invoices for {new Date(year, month - 1).toLocaleString('default', { month: 'long', year: 'numeric' })}
+        </h3>
+      </div>
 
       {monthInvoices.length === 0 ? (
         <p className="text-gray-600">No invoices found for this month</p>
@@ -216,7 +225,7 @@ className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:
               </thead>
               <tbody>
                 {monthInvoices.map((inv, idx) => (
-                  <tr key={inv.id} className={idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
+                  <tr key={inv.id} className={idx % 2 === 0 ? 'bg-gray-50 hover:bg-gray-100 transition' : 'bg-white hover:bg-gray-50 transition'}>
                     <td className="py-3">{inv.vendorName}</td>
                     <td className="py-3">{new Date(inv.invoiceDate).toLocaleDateString()}</td>
                     <td className="text-right py-3">INR {inv.amount.toLocaleString()}</td>

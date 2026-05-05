@@ -8,8 +8,8 @@ import { authorizeMember } from '../middleware/authorize';
 import nodemailer from 'nodemailer';
 
 const router: Router = express.Router();
-const gstPattern = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
-const panPattern = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
+const gstPattern = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]{3}$/i;
+const panPattern = /^[A-Z]{5}[0-9]{4}[A-Z]$/i;
 
 const getFinancialYearDateRange = (year: number) => ({
   start: new Date(year, 3, 1),
@@ -54,7 +54,7 @@ router.post('/', auth, async (req: Request, res: Response) => {
     const company = await prisma.$transaction(async (tx) => {
       const newCompany = await tx.company.create({
         data: {
-          userId: req.userId!, // The original creator
+          userId: (req as any).userId, // The original creator
           gstNumber: normalizedGstNumber,
           companyName: normalizedCompanyName,
           state: normalizedState,
@@ -67,7 +67,7 @@ router.post('/', auth, async (req: Request, res: Response) => {
       await tx.companyMember.create({
         data: {
           companyId: newCompany.id,
-          userId: req.userId!,
+          userId: (req as any).userId,
           role: 'OWNER',
           status: 'ACTIVE',
         },
@@ -94,12 +94,12 @@ router.get('/', auth, async (req: Request, res: Response) => {
     const companies = await prisma.company.findMany({
       where: {
         members: {
-          some: { userId: req.userId, status: 'ACTIVE' },
+          some: { userId: (req as any).userId, status: 'ACTIVE' },
         },
       },
       include: {
         members: {
-          where: { userId: req.userId },
+          where: { userId: (req as any).userId },
           select: { role: true }
         },
         _count: {
@@ -389,7 +389,7 @@ router.get('/stats/dashboard', auth, async (req: Request, res: Response) => {
 
     const memberOfCompanyIds = (
       await prisma.companyMember.findMany({
-        where: { userId: req.userId, status: 'ACTIVE' },
+        where: { userId: (req as any).userId, status: 'ACTIVE' },
         select: { companyId: true },
       })
     ).map((m) => m.companyId);
@@ -487,7 +487,7 @@ router.get('/:id', auth, authorizeMember(['OWNER', 'ADMIN', 'EDITOR', 'VIEWER'])
       where: { id: req.params.id },
       include: {
         members: {
-          where: { userId: req.userId },
+          where: { userId: (req as any).userId },
           select: { role: true }
         },
         _count: {
@@ -653,7 +653,7 @@ router.post('/:id/reminders', auth, authorizeMember(['OWNER', 'ADMIN', 'EDITOR',
   try {
     const { deadlines } = req.body;
     
-    const user = await prisma.user.findUnique({ where: { id: req.userId } });
+    const user = await prisma.user.findUnique({ where: { id: (req as any).userId } });
     const company = await prisma.company.findUnique({ where: { id: req.params.id } });
 
     if (!user || !company) {
@@ -812,7 +812,7 @@ router.delete('/:id/members/:userId', auth, authorizeMember(['OWNER']), async (r
   try {
     const { id, userId } = req.params;
 
-    if (userId === req.userId) {
+    if (userId === (req as any).userId) {
       return res.status(400).json({ error: 'You cannot remove yourself. Use the delete workspace option instead.' });
     }
 

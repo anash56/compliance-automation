@@ -12,11 +12,19 @@ datasource db {
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
-  password  String
+  password  String?
   fullName  String
   role      String   @default("business_owner")
+  isEmailVerified    Boolean  @default(true)
+  verificationToken  String?  @unique
+  isTwoFactorEnabled Boolean  @default(false)
+  twoFactorSecret    String?
+  twoFactorBackupCodes String[] @default([])
+  authProvider       String   @default("local")
+  providerId         String?
   memberships CompanyMember[]
   companies Company[]
+  auditLogs AuditLog[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

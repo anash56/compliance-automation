@@ -19,9 +19,6 @@ export const signup = createAsyncThunk(
         password,
         fullName
       });
-      if (response.data.token) {
-        localStorage.setItem('token', response.data.token);
-      }
       return response.data;
     } catch (error: any) {
       return rejectWithValue(getAuthErrorMessage(error, 'Signup failed'));
@@ -31,16 +28,40 @@ export const signup = createAsyncThunk(
  
 export const login = createAsyncThunk(
   'auth/login',
-  async ({ email, password }: any, { rejectWithValue }) => {
+  async ({ email, password, rememberMe }: any, { rejectWithValue }) => {
     try {
       const response = await api.post('/auth/login', {
         email,
-        password
+        password,
+        rememberMe
       });
-      localStorage.setItem('token', response.data.token);
       return response.data;
     } catch (error: any) {
       return rejectWithValue(getAuthErrorMessage(error, 'Login failed'));
+    }
+  }
+);
+
+export const socialLogin = createAsyncThunk(
+  'auth/socialLogin',
+  async ({ provider, code }: any, { rejectWithValue }) => {
+    try {
+      const response = await api.post('/auth/oauth/callback', { provider, code });
+      return response.data;
+    } catch (error: any) {
+      return rejectWithValue(getAuthErrorMessage(error, `${provider} login failed`));
+    }
+  }
+);
+
+export const verify2FA = createAsyncThunk(
+  'auth/verify2FA',
+  async ({ tempToken, code }: any, { rejectWithValue }) => {
+    try {
+      const response = await api.post('/auth/verify-2fa', { tempToken, code });
+      return response.data;
+    } catch (error: any) {
+      return rejectWithValue(getAuthErrorMessage(error, 'Invalid 2FA code'));
     }
   }
 );
@@ -60,7 +81,7 @@ export const fetchCurrentUser = createAsyncThunk(
 export const logout = createAsyncThunk(
   'auth/logout',
   async () => {
-    localStorage.removeItem('token');
+    await api.post('/auth/logout');
     localStorage.removeItem('selectedCompanyId');
     return null;
   }
@@ -70,9 +91,10 @@ const authSlice = createSlice({
   name: 'auth',
   initialState: {
     user: null as User | null,
-    token: localStorage.getItem('token'),
     loading: false,
-    error: null as string | null
+    error: null as string | null,
+    require2FA: false,
+    tempToken: null as string | null
   },
   reducers: {
     clearError: (state) => {
@@ -85,13 +107,9 @@ const authSlice = createSlice({
         state.loading = true;
         state.error = null;
       })
-      .addCase(signup.fulfilled, (state, action) => {
+      .addCase(signup.fulfilled, (state) => {
         state.loading = false;
         state.error = null;
-        state.user = action.payload.user;
-        if (action.payload.token) {
-          state.token = action.payload.token;
-        }
       })
       .addCase(signup.rejected, (state, action) => {
         state.loading = false;
@@ -104,12 +122,49 @@ const authSlice = createSlice({
       .addCase(login.fulfilled, (state, action) => {
         state.loading = false;
         state.error = null;
-        state.user = action.payload.user;
-        state.token = action.payload.token;
+        if (action.payload.require2FA) {
+          state.require2FA = true;
+          state.tempToken = action.payload.tempToken;
+        } else {
+          state.user = action.payload.user;
+          state.require2FA = false;
+          state.tempToken = null;
+        }
       })
       .addCase(login.rejected, (state, action) => {
         state.loading = false;
         state.error = (action.payload as string) || action.error.message || 'Login failed';
+      })
+      .addCase(socialLogin.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(socialLogin.fulfilled, (state, action) => {
+        state.loading = false;
+        state.error = null;
+        if (action.payload.require2FA) {
+          state.require2FA = true;
+          state.tempToken = action.payload.tempToken;
+        } else {
+          state.user = action.payload.user;
+          state.require2FA = false;
+          state.tempToken = null;
+        }
+      })
+      .addCase(socialLogin.rejected, (state, action) => {
+        state.loading = false;
+        state.error = (action.payload as string) || action.error.message || 'Social login failed';
+      })
+      .addCase(verify2FA.fulfilled, (state, action) => {
+        state.loading = false;
+        state.error = null;
+        state.user = action.payload.user;
+        state.require2FA = false;
+        state.tempToken = null;
+      })
+      .addCase(verify2FA.rejected, (state, action) => {
+        state.loading = false;
+        state.error = (action.payload as string) || action.error.message || 'Invalid code';
       })
       .addCase(fetchCurrentUser.pending, (state) => {
         state.loading = true;
@@ -122,13 +177,12 @@ const authSlice = createSlice({
       .addCase(fetchCurrentUser.rejected, (state) => {
         state.loading = false;
         state.user = null;
-        state.token = null;
-        localStorage.removeItem('token');
         localStorage.removeItem('selectedCompanyId');
       })
       .addCase(logout.fulfilled, (state) => {
         state.user = null;
-        state.token = null;
+        state.require2FA = false;
+        state.tempToken = null;
       });
   }
 });

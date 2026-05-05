@@ -15,7 +15,7 @@ router.post('/', auth, authorizeMember(['OWNER', 'ADMIN', 'EDITOR']), async (req
     }
     
     const vendorGst = req.body.vendorGst ? String(req.body.vendorGst).trim().toUpperCase() : null;
-    const gstPattern = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
+    const gstPattern = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]{3}$/i;
     if (vendorGst && !gstPattern.test(vendorGst)) {
       return res.status(400).json({ error: 'Invalid Vendor GST Number format' });
     }
@@ -74,7 +74,7 @@ router.post('/', auth, authorizeMember(['OWNER', 'ADMIN', 'EDITOR']), async (req
       }
       if ((prisma as any).auditLog) {
         await (prisma as any).auditLog.create({
-          data: { companyId, userId: req.userId!, action: 'CREATE_INVOICE', details: `Created invoice ${invoice.invoiceNumber} for INR ${amount}` }
+          data: { companyId, userId: (req as any).userId, action: 'CREATE_INVOICE', details: `Created invoice ${invoice.invoiceNumber} for INR ${amount}` }
         });
       }
     } catch (e) { console.warn('Task/Audit skipped'); }
@@ -97,7 +97,7 @@ router.put('/:id', auth, async (req: Request, res: Response) => {
     }
     
     const vendorGst = req.body.vendorGst ? String(req.body.vendorGst).trim().toUpperCase() : null;
-    const gstPattern = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
+    const gstPattern = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]{3}$/i;
     if (vendorGst && !gstPattern.test(vendorGst)) {
       return res.status(400).json({ error: 'Invalid Vendor GST Number format' });
     }
@@ -107,7 +107,7 @@ router.put('/:id', auth, async (req: Request, res: Response) => {
 
     // Manually check permission securely
     const membership = await prisma.companyMember.findUnique({
-      where: { userId_companyId: { userId: req.userId!, companyId: invoice.companyId } },
+      where: { userId_companyId: { userId: (req as any).userId, companyId: invoice.companyId } },
     });
     if (!membership || !['OWNER', 'ADMIN', 'EDITOR'].includes(membership.role)) {
       return res.status(403).json({ error: 'You do not have permission to edit this invoice.' });
@@ -148,7 +148,7 @@ router.put('/:id', auth, async (req: Request, res: Response) => {
     try {
       if ((prisma as any).auditLog) {
         await (prisma as any).auditLog.create({
-          data: { companyId: invoice.companyId, userId: req.userId!, action: 'UPDATE_INVOICE', details: `Updated invoice ${invoiceNumber}` }
+          data: { companyId: invoice.companyId, userId: (req as any).userId, action: 'UPDATE_INVOICE', details: `Updated invoice ${invoiceNumber}` }
         });
       }
     } catch(e) {}
@@ -190,7 +190,7 @@ router.delete('/:id', auth, async (req: Request, res: Response) => {
 
     // Manually check permission before deleting
     const membership = await prisma.companyMember.findUnique({
-      where: { userId_companyId: { userId: req.userId!, companyId: invoice.companyId } },
+      where: { userId_companyId: { userId: (req as any).userId, companyId: invoice.companyId } },
     });
 
     if (!membership || !['OWNER', 'ADMIN', 'EDITOR'].includes(membership.role)) {
@@ -202,7 +202,7 @@ router.delete('/:id', auth, async (req: Request, res: Response) => {
     try {
       if ((prisma as any).auditLog) {
         await (prisma as any).auditLog.create({
-          data: { companyId: invoice.companyId, userId: req.userId!, action: 'DELETE_INVOICE', details: `Deleted invoice ${invoice.invoiceNumber}` }
+          data: { companyId: invoice.companyId, userId: (req as any).userId, action: 'DELETE_INVOICE', details: `Deleted invoice ${invoice.invoiceNumber}` }
         });
       }
     } catch(e) {}

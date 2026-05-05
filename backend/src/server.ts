@@ -4,6 +4,8 @@ import express, { Express, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { PrismaClient } from '@prisma/client';
+// @ts-ignore
+import cookieParser from 'cookie-parser';
 
 // Import routes
 import authRoutes from './routes/auth';
@@ -28,6 +30,7 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 
 // Health check
 app.get('/api/health', async (req: Request, res: Response) => {
@@ -60,7 +63,7 @@ app.use((req: Request, res: Response) => {
 });
 
 // Error handler
-app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
+app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
   console.error('Error:', err);
   res.status(500).json({ 
     error: 'Server error',

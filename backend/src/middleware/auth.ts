@@ -3,15 +3,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 
-// Extend Express Request to include userId
-declare global {
-  namespace Express {
-    interface Request {
-      userId?: string;
-    }
-  }
-}
-
 const auth = (req: Request, res: Response, next: NextFunction) => {
   try {
     const jwtSecret = process.env.JWT_SECRET;
@@ -19,14 +10,15 @@ const auth = (req: Request, res: Response, next: NextFunction) => {
       return res.status(500).json({ error: 'JWT secret is not configured' });
     }
 
-    const token = req.header('Authorization')?.replace('Bearer ', '');
+    // Look for token in cookies first, fallback to header for testing
+    const token = req.cookies?.token || req.header('Authorization')?.replace('Bearer ', '');
 
     if (!token) {
       return res.status(401).json({ error: 'No token provided' });
     }
 
     const decoded = jwt.verify(token, jwtSecret) as any;
-    req.userId = decoded.userId;
+    (req as any).userId = decoded.userId;
     next();
   } catch (error) {
     if (error instanceof jwt.TokenExpiredError) {

@@ -40,6 +40,7 @@ const [success, setSuccess] = useState('');
 const [searchQuery, setSearchQuery] = useState('');
 const [currentPage, setCurrentPage] = useState(1);
 const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
+const [selectedRecords, setSelectedRecords] = useState<string[]>([]);
 const itemsPerPage = 10;
 const form26qRef = useRef<HTMLDivElement>(null);
 const [formData, setFormData] = useState({
@@ -70,6 +71,7 @@ const fetchTDSRecords = async (q = quarter, y = year) => {
 
 useEffect(() => {
   setCurrentPage(1);
+  setSelectedRecords([]);
 }, [searchQuery, quarter, year]);
 
 const filteredRecords = tdsRecords.filter(record => 
@@ -149,7 +151,7 @@ try {
   setLoading(false);
 }
 };
-const handleEditClick = (record: any) => {
+const handleEditClick = (record: TDSRecord) => {
   setFormData({
     vendorName: record.vendorName,
     vendorPan: record.vendorPan || '',
@@ -204,6 +206,34 @@ try {
   setLoading(false);
 }
 };
+
+const handleSelectOneRecord = (e: React.ChangeEvent<HTMLInputElement>, id: string) => {
+  if (e.target.checked) {
+    setSelectedRecords([...selectedRecords, id]);
+  } else {
+    setSelectedRecords(selectedRecords.filter(rId => rId !== id));
+  }
+};
+
+const handleDeleteSelectedRecords = async () => {
+  if (!window.confirm(`Are you sure you want to delete ${selectedRecords.length} selected records?`)) return;
+  setLoading(true); setError(''); setSuccess('');
+  try {
+    for (let i = 0; i < selectedRecords.length; i += 10) {
+      const chunk = selectedRecords.slice(i, i + 10);
+      await Promise.all(chunk.map(id => api.delete(`/tds/records/${id}`)));
+    }
+    setSuccess(`${selectedRecords.length} records deleted successfully.`);
+    setTdsRecords(tdsRecords.filter(record => !selectedRecords.includes(record.id as string)));
+    setSelectedRecords([]);
+    setTimeout(() => setSuccess(''), 3000);
+  } catch (err: any) {
+    setError(err.response?.data?.error || 'Failed to delete some records');
+  } finally {
+    setLoading(false);
+  }
+};
+
 const handleExportCSV = () => {
   if (filteredRecords.length === 0) {
     setError('No records available to export.');
@@ -286,7 +316,7 @@ const rate = TDS_RATES[formData.category] || 10;
 return (amount * rate) / 100;
 };
 
-const handleFileUpload = async (e: any) => {
+const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
   const file = e.target?.files?.[0];
   if (!file) return;
   
@@ -324,7 +354,7 @@ const handleFileUpload = async (e: any) => {
       try {
         await api.post('/tds/records', { companyId, ...newRecords[i] });
         successCount++;
-      } catch (err) {
+      } catch (err: any) {
         console.error('Failed to create TDS record:', newRecords[i].vendorName);
       }
       setBulkProgress({ current: i + 1, total: newRecords.length });
@@ -463,7 +493,7 @@ className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:
                 onChange={(e) => setFormData({ ...formData, vendorPan: e.target.value.toUpperCase() })}
                 placeholder="ABCDE1234F"
                 maxLength={10}
-                pattern="[A-Z]{5}[0-9]{4}[A-Z]"
+                pattern="^[A-Za-z]{5}[0-9]{4}[A-Za-z]$"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -579,7 +609,15 @@ className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:
           >
             Export CSV
           </button>
-          {canEdit && paginatedRecords.length > 0 && (
+          {canEdit && selectedRecords.length > 0 ? (
+            <button
+              onClick={handleDeleteSelectedRecords}
+              disabled={loading}
+              className="px-4 py-2 text-sm font-semibold text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition"
+            >
+              Delete Selected ({selectedRecords.length})
+            </button>
+          ) : canEdit && paginatedRecords.length > 0 && (
             <button
               onClick={handleDeleteAllRecords}
               disabled={loading}
@@ -601,6 +639,7 @@ className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b-2 border-gray-300">
+              {canEdit && <th className="px-3 py-3 w-10"></th>}
               <th className="text-left py-3 font-semibold text-gray-700">Vendor</th>
               <th className="text-left py-3 font-semibold text-gray-700">Date</th>
               <th className="text-right py-3 font-semibold text-gray-700">Payment Amount</th>
@@ -616,10 +655,20 @@ className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:
           <tbody>
             {paginatedRecords.length === 0 ? (
               <tr>
-                <td colSpan={canEdit ? 8 : 7} className="text-center py-8 text-gray-500">No records found matching your search.</td>
+                <td colSpan={canEdit ? 9 : 7} className="text-center py-8 text-gray-500">No records found matching your search.</td>
               </tr>
             ) : paginatedRecords.map((record, idx) => (
               <tr key={record.id} className={idx % 2 === 0 ? 'bg-gray-50 hover:bg-gray-100 transition' : 'bg-white hover:bg-gray-50 transition'}>
+                {canEdit && (
+                  <td className="px-3 py-3 w-10">
+                    <input
+                      type="checkbox"
+                      checked={selectedRecords.includes(record.id as string)}
+                      onChange={(e) => handleSelectOneRecord(e, record.id as string)}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                    />
+                  </td>
+                )}
                 <td className="py-3">{record.vendorName}</td>
                 <td className="py-3">{new Date(record.paymentDate).toLocaleDateString()}</td>
                 <td className="text-right py-3">INR {Number(record.paymentAmount).toLocaleString()}</td>
@@ -654,6 +703,7 @@ className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:
           </tbody>
           <tfoot>
             <tr className="border-t-2 border-gray-300 bg-gray-50">
+              {canEdit && <td></td>}
               <td colSpan={2} className="py-3 font-semibold text-center">Total</td>
               <td className="text-right py-3 font-semibold">
                 INR {filteredRecords.reduce((sum, r) => sum + Number(r.paymentAmount), 0).toLocaleString()}

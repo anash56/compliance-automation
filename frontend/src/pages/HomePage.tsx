@@ -3,8 +3,8 @@ import { useSelector } from 'react-redux';
 import { RootState } from '../store';
 export default function HomePage() {
 const navigate = useNavigate();
-const { token } = useSelector((state: RootState) => state.auth);
-if (token) {
+const { user } = useSelector((state: RootState) => state.auth);
+if (user) {
 navigate('/dashboard');
 return null;
 }

@@ -20,6 +20,7 @@ const [activeTab, setActiveTab] = useState('invoices');
 const [searchQuery, setSearchQuery] = useState('');
 const [currentPage, setCurrentPage] = useState(1);
 const [totalPages, setTotalPages] = useState(1);
+const [selectedInvoices, setSelectedInvoices] = useState<string[]>([]);
 const [editingInvoice, setEditingInvoice] = useState<any>(null);
 const itemsPerPage = 10;
 const { showToast } = useToast();
@@ -68,6 +69,7 @@ const fetchInvoices = async (companyId: string, page: number = 1, search: string
     if (response.data.success) {
       setInvoices(response.data.invoices);
       setTotalPages(response.data.totalPages);
+          setSelectedInvoices([]);
     }
   } catch (error) {
     console.error('Failed to fetch invoices:', error);
@@ -90,6 +92,28 @@ showToast('Invoice deleted successfully');
 showToast(error.response?.data?.error || 'Failed to delete invoice', 'error');
 }
 };
+
+const handleSelectInvoice = (id: string) => {
+  setSelectedInvoices(prev => prev.includes(id) ? prev.filter(invId => invId !== id) : [...prev, id]);
+};
+
+const handleDeleteSelectedInvoices = async () => {
+  if (!window.confirm(`Are you sure you want to delete ${selectedInvoices.length} selected invoices?`)) return;
+  setLoading(true);
+  try {
+    for (let i = 0; i < selectedInvoices.length; i += 10) {
+      const chunk = selectedInvoices.slice(i, i + 10);
+      await Promise.all(chunk.map((id) => api.delete(`/invoices/${id}`)));
+    }
+    showToast(`${selectedInvoices.length} invoices deleted successfully`);
+    if (selectedCompany) fetchInvoices(selectedCompany.id, currentPage, searchQuery);
+  } catch (error: any) {
+    showToast(error.response?.data?.error || 'Failed to delete some invoices', 'error');
+  } finally {
+    setLoading(false);
+  }
+};
+
 const handleDeleteAllInvoices = async () => {
 if (!window.confirm('Are you sure you want to delete ALL invoices matching the current search?')) return;
 setLoading(true);
@@ -212,7 +236,15 @@ return (
                       >
                         Export CSV
                       </button>
-                      {canEdit && invoices.length > 0 && (
+                      {canEdit && selectedInvoices.length > 0 ? (
+                        <button
+                          onClick={handleDeleteSelectedInvoices}
+                          disabled={loading}
+                          className="px-3 py-1 text-xs font-semibold text-red-700 bg-red-50 border border-red-200 rounded hover:bg-red-100 disabled:opacity-50 transition"
+                        >
+                          Delete Selected ({selectedInvoices.length})
+                        </button>
+                      ) : canEdit && invoices.length > 0 && (
                         <button
                           onClick={handleDeleteAllInvoices}
                           disabled={loading}
@@ -237,8 +269,18 @@ return (
                       <p className="text-gray-500 text-sm text-center py-4">No invoices found.</p>
                     ) : (
                       invoices.map(inv => (
-                        <div key={inv.id} className="p-3 bg-gray-50 rounded-lg border border-gray-200 hover:border-blue-300 transition relative">
+                        <div key={inv.id} className={`p-3 rounded-lg border transition relative ${selectedInvoices.includes(inv.id as string) ? 'bg-blue-50 border-blue-300' : 'bg-gray-50 border-gray-200 hover:border-blue-300'}`}>
                           <div className="flex items-start gap-3">
+                            {canEdit && (
+                              <div className="pt-1">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedInvoices.includes(inv.id as string)}
+                                  onChange={() => handleSelectInvoice(inv.id as string)}
+                                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                />
+                              </div>
+                            )}
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-semibold text-gray-900 truncate" title={inv.vendorName}>{inv.vendorName}</p>
                               <p className="text-xs text-gray-600 mt-1">INR {inv.amount.toLocaleString()} @ {inv.gstRate}%</p>

@@ -8,6 +8,23 @@ editData?: any;
 onCancelEdit?: () => void;
 }
 const normalizeState = (state?: string | null) => (state || '').trim().toLowerCase();
+
+const INDIAN_STATES = [
+  "Andaman and Nicobar Islands", "Andhra Pradesh", "Arunachal Pradesh", "Assam",
+  "Bihar", "Chandigarh", "Chhattisgarh", "Dadra and Nagar Haveli and Daman and Diu",
+  "Delhi", "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jammu and Kashmir",
+  "Jharkhand", "Karnataka", "Kerala", "Ladakh", "Lakshadweep", "Madhya Pradesh",
+  "Maharashtra", "Manipur", "Meghalaya", "Mizoram", "Nagaland", "Odisha",
+  "Puducherry", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu", "Telangana",
+  "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal"
+];
+
+const getMatchedState = (state?: string | null) => {
+  if (!state) return '';
+  const normalized = state.trim().toLowerCase();
+  return INDIAN_STATES.find(s => s.toLowerCase() === normalized) || '';
+};
+
 export default function InvoiceForm({ companyId, companyState, onSuccess, editData, onCancelEdit }: InvoiceFormProps) {
 const [formMode, setFormMode] = useState<'single' | 'bulk'>('single');
 const [uploadingBulk, setUploadingBulk] = useState(false);
@@ -43,7 +60,7 @@ useEffect(() => {
       amount: editData.amount.toString(),
       gstRate: editData.gstRate.toString(),
       invoiceDate: new Date(editData.invoiceDate).toISOString().split('T')[0],
-      state: editData.state,
+          state: getMatchedState(editData.state),
       invoiceType: editData.invoiceType,
       hsnCode: editData.hsnCode || '',
       notes: editData.notes || ''
@@ -58,7 +75,7 @@ useEffect(() => {
   }
 }, [editData]);
 
-const handleInputChange = (e: any) => {
+const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
 const { name, value } = e.target;
 setFormData(prev => ({
 ...prev,
@@ -174,7 +191,7 @@ const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         amount: parseFloat(values[headers.indexOf('amount')]) || 0,
         gstRate: parseInt(values[headers.indexOf('gstrate')]) || 18,
         invoiceDate: values[headers.indexOf('invoicedate')] || new Date().toISOString().split('T')[0],
-        state: values[headers.indexOf('state')] || companyState,
+        state: getMatchedState(values[headers.indexOf('state')] || ''),
         invoiceType: values[headers.indexOf('invoicetype')] || 'B2B',
         hsnCode: values[headers.indexOf('hsncode')] || null,
         notes: values[headers.indexOf('notes')] || null
@@ -189,7 +206,7 @@ const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       try {
         await api.post('/invoices', { companyId, ...newInvoices[i] });
         successCount++;
-      } catch (err) {
+      } catch (err: any) {
         console.error('Failed to create invoice:', newInvoices[i].invoiceNumber);
       }
       setBulkProgress({ current: i + 1, total: newInvoices.length });
@@ -275,7 +292,7 @@ return (
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">Vendor GST</label>
-          <input type="text" name="vendorGst" value={formData.vendorGst} onChange={(e) => setFormData({...formData, vendorGst: e.target.value.toUpperCase()})} placeholder="27AABCT1234H1Z0" pattern="^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$" title="Must be a valid 15-character GSTIN" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          <input type="text" name="vendorGst" value={formData.vendorGst} onChange={(e) => setFormData({...formData, vendorGst: e.target.value.toUpperCase()})} placeholder="27ABCDE1234F1Z5" pattern="^[0-9]{2}[A-Za-z]{5}[0-9]{4}[A-Za-z][0-9A-Za-z]{3}$" title="Must be a valid 15-character GSTIN" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">Amount (INR) *</label>
@@ -297,7 +314,12 @@ return (
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">State *</label>
-          <input type="text" name="state" value={formData.state} onChange={handleInputChange} placeholder="Gujarat" required className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          <select name="state" value={formData.state} onChange={handleInputChange} required className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="" disabled>Select State</option>
+            {INDIAN_STATES.map(s => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">Invoice Type</label>

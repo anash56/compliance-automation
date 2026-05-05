@@ -9,7 +9,7 @@ import { authorizeMember } from '../middleware/authorize';
 
 const router: Router = express.Router();
 const tdsCategories = Object.keys(TDS_RATES);
-const panPattern = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
+const panPattern = /^[A-Z]{5}[0-9]{4}[A-Z]$/i;
 
 const createTDSRecordSchema = Joi.object({
   companyId: Joi.string().trim().required(),
@@ -104,7 +104,7 @@ router.post('/records', auth, authorizeMember(['OWNER', 'ADMIN', 'EDITOR']), asy
       }
       if ((prisma as any).auditLog) {
         await (prisma as any).auditLog.create({
-          data: { companyId, userId: req.userId!, action: 'CREATE_TDS', details: `Recorded TDS payment for ${vendorName} (INR ${paymentAmount})` }
+          data: { companyId, userId: (req as any).userId, action: 'CREATE_TDS', details: `Recorded TDS payment for ${vendorName} (INR ${paymentAmount})` }
         });
       }
     } catch(e) { console.warn('Task/Audit skipped'); }
@@ -134,7 +134,7 @@ router.put('/records/:id', auth, async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Payment amount must be greater than 0' });
     }
 
-    const panPattern = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
+    const panPattern = /^[A-Z]{5}[0-9]{4}[A-Z]$/i;
     if (vendorPan && !panPattern.test(vendorPan)) {
       return res.status(400).json({ error: 'Invalid Vendor PAN format' });
     }
@@ -144,7 +144,7 @@ router.put('/records/:id', auth, async (req: Request, res: Response) => {
 
     // Manually check permission securely
     const membership = await prisma.companyMember.findUnique({
-      where: { userId_companyId: { userId: req.userId!, companyId: record.companyId } },
+      where: { userId_companyId: { userId: (req as any).userId, companyId: record.companyId } },
     });
     if (!membership || !['OWNER', 'ADMIN', 'EDITOR'].includes(membership.role)) {
       return res.status(403).json({ error: 'You do not have permission to edit this record.' });
@@ -177,7 +177,7 @@ router.put('/records/:id', auth, async (req: Request, res: Response) => {
     try {
       if ((prisma as any).auditLog) {
         await (prisma as any).auditLog.create({
-          data: { companyId: record.companyId, userId: req.userId!, action: 'UPDATE_TDS', details: `Updated TDS payment for ${vendorName}` }
+          data: { companyId: record.companyId, userId: (req as any).userId, action: 'UPDATE_TDS', details: `Updated TDS payment for ${vendorName}` }
         });
       }
     } catch(e) {}
@@ -204,7 +204,7 @@ router.delete('/records/:id', auth, async (req: Request, res: Response) => {
     }
 
     const membership = await prisma.companyMember.findUnique({
-      where: { userId_companyId: { userId: req.userId!, companyId: record.companyId } },
+      where: { userId_companyId: { userId: (req as any).userId, companyId: record.companyId } },
     });
 
     if (!membership || !['OWNER', 'ADMIN', 'EDITOR'].includes(membership.role)) {
@@ -217,7 +217,7 @@ router.delete('/records/:id', auth, async (req: Request, res: Response) => {
     try {
       if ((prisma as any).auditLog) {
         await (prisma as any).auditLog.create({
-          data: { companyId: record.companyId, userId: req.userId!, action: 'DELETE_TDS', details: `Deleted TDS payment for ${record.vendorName}` }
+          data: { companyId: record.companyId, userId: (req as any).userId, action: 'DELETE_TDS', details: `Deleted TDS payment for ${record.vendorName}` }
         });
       }
     } catch(e) {}
