@@ -8,10 +8,22 @@ export const api = axios.create({
   }
 });
 
+// Handle requests - Manually attach token to bypass strict 3rd-party cookie blockers
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('token');
+    if (token && config.headers) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
 let isRefreshing = false;
 let failedQueue: any[] = [];
 
-const processQueue = (error: any, token: string | null = null) => {
+const processQueue = (error: any) => {
   failedQueue.forEach(prom => {
     if (error) {
       prom.reject(error);
@@ -46,6 +58,7 @@ api.interceptors.response.use(
       } catch (err) {
         isRefreshing = false;
         processQueue(err);
+        localStorage.removeItem('token'); // CRITICAL: Clear token to break the infinite redirect loop
         window.location.href = '/login';
         return Promise.reject(err);
       }
