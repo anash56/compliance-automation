@@ -41,6 +41,20 @@ const handleUpdateProfile = async (e: React.FormEvent) => {
   finally { setLoading(false); }
 };
 
+const handleDeleteAccount = async () => {
+  if (window.confirm("Are you absolutely sure you want to permanently delete your account? All your companies and data will be lost forever. This action cannot be undone.")) {
+    setLoading(true); setError('');
+    try {
+      await api.delete('/auth/me');
+      await dispatch(logout());
+      navigate('/login');
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to delete account');
+      setLoading(false);
+    }
+  }
+};
+
 const handleSetup2FA = async () => {
   setLoading(true); setError(''); setSuccess('');
   try {
@@ -175,7 +189,7 @@ ComplianceBot
     {/* Settings Modal */}
     {showSettings && (
       <div className="fixed inset-0 bg-black bg-opacity-50 z-[200] flex items-center justify-center p-4">
-        <div className="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md">
+        <div className="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
           <h3 className="text-2xl font-bold mb-6 text-gray-900">Account Settings</h3>
           {error && <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>}
           {success && <div className="mb-4 p-3 bg-green-50 text-green-700 rounded-lg text-sm">{success}</div>}
@@ -243,6 +257,22 @@ ComplianceBot
                   </button>
                 </div>
               )}
+            </div>
+
+            <div className="pt-4 border-t border-gray-200">
+              <h4 className="text-sm font-bold text-red-600 mb-3">Danger Zone</h4>
+              <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                <h5 className="font-bold text-red-800 mb-1">Delete Account</h5>
+                <p className="text-sm text-red-700 mb-4">Permanently delete your account and all associated data. This action cannot be undone.</p>
+                <button 
+                  type="button" 
+                  onClick={handleDeleteAccount} 
+                  disabled={loading} 
+                  className="px-4 py-2 bg-red-600 text-white rounded font-semibold text-sm hover:bg-red-700 disabled:opacity-50 transition"
+                >
+                  Delete My Account
+                </button>
+              </div>
             </div>
 
             <div className="flex gap-3 justify-end pt-4 mt-4 border-t border-gray-200">

@@ -676,4 +676,26 @@ router.post('/oauth/callback', async (req: Request, res: Response) => {
   }
 });
 
+// Delete user account
+router.delete('/me', auth, async (req: Request, res: Response) => {
+  try {
+    await prisma.user.delete({
+      where: { id: (req as any).userId }
+    });
+    res.clearCookie('token', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict'
+    });
+    res.clearCookie('refreshToken', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict'
+    });
+    res.json({ success: true, message: 'Account deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete account' });
+  }
+});
+
 export default router;

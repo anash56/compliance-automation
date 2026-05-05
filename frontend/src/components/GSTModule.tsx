@@ -3,18 +3,11 @@ import api from '../services/api';
 import { Invoice } from '../types';
 // @ts-ignore
 import html2pdf from 'html2pdf.js/dist/html2pdf.bundle.min.js';
-import { useSelector } from 'react-redux';
-import { RootState } from '../store';
 
 interface GSTModuleProps {
 companyId: string;
 }
 export default function GSTModule({ companyId }: GSTModuleProps) {
-const { companies } = useSelector((state: RootState) => state.company);
-const company = companies.find(c => c.id === companyId);
-const userRole = company?.userRole || 'VIEWER';
-const canEdit = ['OWNER', 'ADMIN', 'EDITOR'].includes(userRole);
-
 const prevMonthDate = new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1);
 const [month, setMonth] = useState(prevMonthDate.getMonth() + 1);
 const [year, setYear] = useState(prevMonthDate.getFullYear());
@@ -202,11 +195,9 @@ className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:
   {/* Invoice List for Selected Month */}
   {!gstr1 && (
     <div className="bg-white p-6 rounded-lg border border-gray-200">
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="text-lg font-semibold mb-0">
-          Invoices for {new Date(year, month - 1).toLocaleString('default', { month: 'long', year: 'numeric' })}
-        </h3>
-      </div>
+      <h3 className="text-lg font-semibold mb-4">
+        Invoices for {new Date(year, month - 1).toLocaleString('default', { month: 'long', year: 'numeric' })}
+      </h3>
 
       {monthInvoices.length === 0 ? (
         <p className="text-gray-600">No invoices found for this month</p>
@@ -225,12 +216,12 @@ className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:
               </thead>
               <tbody>
                 {monthInvoices.map((inv, idx) => (
-                  <tr key={inv.id} className={idx % 2 === 0 ? 'bg-gray-50 hover:bg-gray-100 transition' : 'bg-white hover:bg-gray-50 transition'}>
+                  <tr key={inv.id} className={idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
                     <td className="py-3">{inv.vendorName}</td>
                     <td className="py-3">{new Date(inv.invoiceDate).toLocaleDateString()}</td>
-                    <td className="text-right py-3">INR {inv.amount.toLocaleString()}</td>
+                    <td className="text-right py-3">INR {Number(inv.amount).toLocaleString()}</td>
                     <td className="text-right py-3">{inv.gstRate}%</td>
-                    <td className="text-right py-3 font-semibold">INR {inv.totalTax.toLocaleString()}</td>
+                    <td className="text-right py-3 font-semibold">INR {Number(inv.totalTax).toLocaleString()}</td>
                   </tr>
                 ))}
               </tbody>
@@ -238,11 +229,11 @@ className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:
                 <tr className="border-t-2 border-gray-300 bg-gray-50">
                   <td colSpan={2} className="py-3 font-semibold">Total</td>
                   <td className="text-right py-3 font-semibold">
-                    INR {monthInvoices.reduce((sum, inv) => sum + inv.amount, 0).toLocaleString()}
+                    INR {monthInvoices.reduce((sum, inv) => sum + Number(inv.amount), 0).toLocaleString()}
                   </td>
                   <td colSpan={1}></td>
                   <td className="text-right py-3 font-semibold">
-                    INR {monthInvoices.reduce((sum, inv) => sum + inv.totalTax, 0).toLocaleString()}
+                    INR {monthInvoices.reduce((sum, inv) => sum + Number(inv.totalTax), 0).toLocaleString()}
                   </td>
                 </tr>
               </tfoot>

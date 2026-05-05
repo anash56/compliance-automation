@@ -20,8 +20,8 @@ const [activeTab, setActiveTab] = useState('invoices');
 const [searchQuery, setSearchQuery] = useState('');
 const [currentPage, setCurrentPage] = useState(1);
 const [totalPages, setTotalPages] = useState(1);
-const [selectedInvoices, setSelectedInvoices] = useState<string[]>([]);
 const [editingInvoice, setEditingInvoice] = useState<any>(null);
+const [selectedInvoices, setSelectedInvoices] = useState<string[]>([]);
 const itemsPerPage = 10;
 const { showToast } = useToast();
 
@@ -69,7 +69,7 @@ const fetchInvoices = async (companyId: string, page: number = 1, search: string
     if (response.data.success) {
       setInvoices(response.data.invoices);
       setTotalPages(response.data.totalPages);
-          setSelectedInvoices([]);
+      setSelectedInvoices([]);
     }
   } catch (error) {
     console.error('Failed to fetch invoices:', error);
@@ -77,41 +77,29 @@ const fetchInvoices = async (companyId: string, page: number = 1, search: string
     setLoading(false);
   }
 };
-const handleDeleteInvoice = async (invoiceId: string) => {
-if (!window.confirm('Delete this invoice?')) return;
-try {
-await api.delete(`/invoices/${invoiceId}`);
-if (selectedCompany) {
-        if (editingInvoice?.id === invoiceId) {
-          setEditingInvoice(null);
-        }
-        fetchInvoices(selectedCompany.id, currentPage, searchQuery);
-}
-showToast('Invoice deleted successfully');
-} catch (error: any) {
-showToast(error.response?.data?.error || 'Failed to delete invoice', 'error');
-}
-};
-
-const handleSelectInvoice = (id: string) => {
-  setSelectedInvoices(prev => prev.includes(id) ? prev.filter(invId => invId !== id) : [...prev, id]);
-};
-
 const handleDeleteSelectedInvoices = async () => {
   if (!window.confirm(`Are you sure you want to delete ${selectedInvoices.length} selected invoices?`)) return;
   setLoading(true);
   try {
     for (let i = 0; i < selectedInvoices.length; i += 10) {
       const chunk = selectedInvoices.slice(i, i + 10);
-      await Promise.all(chunk.map((id) => api.delete(`/invoices/${id}`)));
+      await Promise.all(chunk.map(id => api.delete(`/invoices/${id}`)));
     }
     showToast(`${selectedInvoices.length} invoices deleted successfully`);
-    if (selectedCompany) fetchInvoices(selectedCompany.id, currentPage, searchQuery);
+    setSelectedInvoices([]);
+    if (selectedCompany) {
+      fetchInvoices(selectedCompany.id, currentPage, searchQuery);
+    }
   } catch (error: any) {
-    showToast(error.response?.data?.error || 'Failed to delete some invoices', 'error');
+    showToast(error.response?.data?.error || 'Failed to delete selected invoices', 'error');
   } finally {
     setLoading(false);
   }
+};
+
+const handleSelectOne = (e: React.ChangeEvent<HTMLInputElement>, id: string) => {
+  if (e.target.checked) setSelectedInvoices(prev => [...prev, id]);
+  else setSelectedInvoices(prev => prev.filter(invId => invId !== id));
 };
 
 const handleDeleteAllInvoices = async () => {
@@ -240,11 +228,11 @@ return (
                         <button
                           onClick={handleDeleteSelectedInvoices}
                           disabled={loading}
-                          className="px-3 py-1 text-xs font-semibold text-red-700 bg-red-50 border border-red-200 rounded hover:bg-red-100 disabled:opacity-50 transition"
+                          className="px-3 py-1 text-xs font-semibold text-red-700 bg-red-50 border border-red-200 rounded hover:bg-red-100 transition"
                         >
                           Delete Selected ({selectedInvoices.length})
                         </button>
-                      ) : canEdit && invoices.length > 0 && (
+                      ) : canEdit && invoices.length > 0 ? (
                         <button
                           onClick={handleDeleteAllInvoices}
                           disabled={loading}
@@ -252,7 +240,7 @@ return (
                         >
                           Delete All
                         </button>
-                      )}
+                      ) : null}
                     </div>
                   </div>
                   <div className="mb-4">
@@ -269,14 +257,14 @@ return (
                       <p className="text-gray-500 text-sm text-center py-4">No invoices found.</p>
                     ) : (
                       invoices.map(inv => (
-                        <div key={inv.id} className={`p-3 rounded-lg border transition relative ${selectedInvoices.includes(inv.id as string) ? 'bg-blue-50 border-blue-300' : 'bg-gray-50 border-gray-200 hover:border-blue-300'}`}>
+                        <div key={inv.id} className="p-3 bg-gray-50 rounded-lg border border-gray-200 hover:border-blue-300 transition relative">
                           <div className="flex items-start gap-3">
                             {canEdit && (
                               <div className="pt-1">
                                 <input
                                   type="checkbox"
                                   checked={selectedInvoices.includes(inv.id as string)}
-                                  onChange={() => handleSelectInvoice(inv.id as string)}
+                                  onChange={(e) => handleSelectOne(e, inv.id as string)}
                                   className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                                 />
                               </div>
@@ -295,15 +283,6 @@ return (
                                   className="px-2 py-1 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 shrink-0 transition"
                                 >
                                   Edit
-                                </button>
-                              )}
-                              {canEdit && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteInvoice(inv.id)}
-                                  className="px-2 py-1 text-xs font-semibold text-red-700 bg-red-50 border border-red-200 rounded hover:bg-red-100 shrink-0 transition"
-                                >
-                                  Delete
                                 </button>
                               )}
                             </div>

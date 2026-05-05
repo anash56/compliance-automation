@@ -8,23 +8,6 @@ editData?: any;
 onCancelEdit?: () => void;
 }
 const normalizeState = (state?: string | null) => (state || '').trim().toLowerCase();
-
-const INDIAN_STATES = [
-  "Andaman and Nicobar Islands", "Andhra Pradesh", "Arunachal Pradesh", "Assam",
-  "Bihar", "Chandigarh", "Chhattisgarh", "Dadra and Nagar Haveli and Daman and Diu",
-  "Delhi", "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jammu and Kashmir",
-  "Jharkhand", "Karnataka", "Kerala", "Ladakh", "Lakshadweep", "Madhya Pradesh",
-  "Maharashtra", "Manipur", "Meghalaya", "Mizoram", "Nagaland", "Odisha",
-  "Puducherry", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu", "Telangana",
-  "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal"
-];
-
-const getMatchedState = (state?: string | null) => {
-  if (!state) return '';
-  const normalized = state.trim().toLowerCase();
-  return INDIAN_STATES.find(s => s.toLowerCase() === normalized) || '';
-};
-
 export default function InvoiceForm({ companyId, companyState, onSuccess, editData, onCancelEdit }: InvoiceFormProps) {
 const [formMode, setFormMode] = useState<'single' | 'bulk'>('single');
 const [uploadingBulk, setUploadingBulk] = useState(false);
@@ -60,7 +43,7 @@ useEffect(() => {
       amount: editData.amount.toString(),
       gstRate: editData.gstRate.toString(),
       invoiceDate: new Date(editData.invoiceDate).toISOString().split('T')[0],
-          state: getMatchedState(editData.state),
+      state: editData.state,
       invoiceType: editData.invoiceType,
       hsnCode: editData.hsnCode || '',
       notes: editData.notes || ''
@@ -75,7 +58,7 @@ useEffect(() => {
   }
 }, [editData]);
 
-const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+const handleInputChange = (e: any) => {
 const { name, value } = e.target;
 setFormData(prev => ({
 ...prev,
@@ -191,7 +174,7 @@ const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         amount: parseFloat(values[headers.indexOf('amount')]) || 0,
         gstRate: parseInt(values[headers.indexOf('gstrate')]) || 18,
         invoiceDate: values[headers.indexOf('invoicedate')] || new Date().toISOString().split('T')[0],
-        state: getMatchedState(values[headers.indexOf('state')] || ''),
+        state: values[headers.indexOf('state')] || companyState,
         invoiceType: values[headers.indexOf('invoicetype')] || 'B2B',
         hsnCode: values[headers.indexOf('hsncode')] || null,
         notes: values[headers.indexOf('notes')] || null
@@ -206,7 +189,7 @@ const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       try {
         await api.post('/invoices', { companyId, ...newInvoices[i] });
         successCount++;
-      } catch (err: any) {
+      } catch (err) {
         console.error('Failed to create invoice:', newInvoices[i].invoiceNumber);
       }
       setBulkProgress({ current: i + 1, total: newInvoices.length });
@@ -218,6 +201,19 @@ const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     setTimeout(() => setSuccess(false), 3000);
   };
   reader.readAsText(file);
+};
+
+const handleDownloadTemplate = () => {
+  const headers = ['invoiceNumber', 'vendorName', 'vendorGst', 'amount', 'gstRate', 'invoiceDate', 'state', 'invoiceType', 'hsnCode', 'notes'];
+  const sampleRow = ['INV-001', 'Acme Corp', '27AABCT1234H1Z0', '50000', '18', '2023-10-01', 'Maharashtra', 'B2B', '8471', 'Sample Note'];
+  const csvContent = headers.join(',') + '\n' + sampleRow.join(',');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.setAttribute('download', 'Invoice_Upload_Template.csv');
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 };
 
 return (
@@ -260,7 +256,17 @@ return (
         <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
       </div>
       <h4 className="text-gray-900 font-medium mb-1">Drag & Drop CSV File</h4>
-      <p className="text-gray-500 text-sm mb-4">Required columns: invoiceNumber, vendorName, amount, gstRate</p>
+      <div className="flex flex-col items-center gap-2 mb-4">
+        <p className="text-gray-500 text-sm">Required columns: invoiceNumber, vendorName, amount, gstRate</p>
+        <button 
+          type="button" 
+          onClick={handleDownloadTemplate}
+          className="text-sm font-semibold text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+          Download Sample Template
+        </button>
+      </div>
       
       <label className="cursor-pointer inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-md font-semibold text-gray-700 hover:bg-gray-50 transition">
         <span>Browse File</span>
@@ -292,7 +298,7 @@ return (
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">Vendor GST</label>
-          <input type="text" name="vendorGst" value={formData.vendorGst} onChange={(e) => setFormData({...formData, vendorGst: e.target.value.toUpperCase()})} placeholder="27ABCDE1234F1Z5" pattern="^[0-9]{2}[A-Za-z]{5}[0-9]{4}[A-Za-z][0-9A-Za-z]{3}$" title="Must be a valid 15-character GSTIN" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          <input type="text" name="vendorGst" value={formData.vendorGst} onChange={(e) => setFormData({...formData, vendorGst: e.target.value.toUpperCase()})} placeholder="27AABCT1234H1Z0" pattern="^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$" title="Must be a valid 15-character GSTIN" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">Amount (INR) *</label>
@@ -314,12 +320,7 @@ return (
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">State *</label>
-          <select name="state" value={formData.state} onChange={handleInputChange} required className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <option value="" disabled>Select State</option>
-            {INDIAN_STATES.map(s => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
+          <input type="text" name="state" value={formData.state} onChange={handleInputChange} placeholder="Gujarat" required className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">Invoice Type</label>
