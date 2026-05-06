@@ -180,7 +180,7 @@ router.post('/login', authLimiter, async (req: Request, res: Response) => {
     const token = jwt.sign(
       { userId: user.id },
       getJwtSecret(),
-      { expiresIn: '15m' }
+      { expiresIn: rememberMe ? '30d' : '1d' }
     );
 
     const refreshToken = jwt.sign(
@@ -193,7 +193,7 @@ router.post('/login', authLimiter, async (req: Request, res: Response) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'none',
-      maxAge: 15 * 60 * 1000 // 15 minutes
+      maxAge: rememberMe ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000
     });
 
     res.cookie('refreshToken', refreshToken, {
@@ -251,7 +251,7 @@ router.post('/verify-2fa', authLimiter, async (req: Request, res: Response) => {
       });
     }
 
-    const token = jwt.sign({ userId: user.id }, getJwtSecret(), { expiresIn: '15m' });
+    const token = jwt.sign({ userId: user.id }, getJwtSecret(), { expiresIn: decoded.rememberMe ? '30d' : '1d' });
     const refreshToken = jwt.sign(
       { userId: user.id, type: 'refresh' },
       getJwtSecret(),
@@ -262,7 +262,7 @@ router.post('/verify-2fa', authLimiter, async (req: Request, res: Response) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'none',
-      maxAge: 15 * 60 * 1000 // 15 minutes
+      maxAge: decoded.rememberMe ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000
     });
 
     res.cookie('refreshToken', refreshToken, {
@@ -669,10 +669,10 @@ router.post('/oauth/callback', async (req: Request, res: Response) => {
       return res.json({ success: true, require2FA: true, tempToken });
     }
 
-    const token = jwt.sign({ userId: user.id }, getJwtSecret(), { expiresIn: '15m' });
+    const token = jwt.sign({ userId: user.id }, getJwtSecret(), { expiresIn: '30d' });
     const refreshToken = jwt.sign({ userId: user.id, type: 'refresh' }, getJwtSecret(), { expiresIn: '30d' });
 
-    res.cookie('token', token, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'none', maxAge: 15 * 60 * 1000 });
+    res.cookie('token', token, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'none', maxAge: 30 * 24 * 60 * 60 * 1000 });
     res.cookie('refreshToken', refreshToken, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'none', maxAge: 30 * 24 * 60 * 60 * 1000 });
 
     res.json({ success: true, token, refreshToken, user: { id: user.id, email: user.email, fullName: user.fullName, role: user.role, isTwoFactorEnabled: user.isTwoFactorEnabled } });

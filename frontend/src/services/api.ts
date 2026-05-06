@@ -23,66 +23,15 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-let isRefreshing = false;
-let failedQueue: any[] = [];
-
-const processQueue = (error: any) => {
-  failedQueue.forEach(prom => {
-    if (error) {
-      prom.reject(error);
-    } else {
-      prom.resolve();
-    }
-  });
-  failedQueue = [];
-};
-
 // Handle responses
 api.interceptors.response.use(
 (response) => response,
-  async (error) => {
-    const originalRequest = error.config;
-
-    if (error.response?.status === 401 && !originalRequest._retry && window.location.pathname !== '/login' && window.location.pathname !== '/signup' && !originalRequest.url?.includes('/auth/refresh')) {
-      if (isRefreshing) {
-        return new Promise(function(resolve, reject) {
-          failedQueue.push({ resolve, reject });
-        }).then(() => api(originalRequest)).catch(err => Promise.reject(err));
-      }
-
-      originalRequest._retry = true;
-      isRefreshing = true;
-
-      try {
-        const refreshToken = localStorage.getItem('refreshToken');
-
-        // DEBUG: Prevent useless backend calls if we already know the token is missing
-        if (!refreshToken) {
-          console.error('[API DEBUG] No refresh token found in localStorage! Bypassing refresh attempt.');
-          throw new Error('No refresh token provided');
-        }
-
-        const res = await axios.post(`${API_URL}/auth/refresh`, { refreshToken }, { withCredentials: true });
-        
-        if (res.data.token) {
-          localStorage.setItem('token', res.data.token);
-          if (res.data.refreshToken) {
-            localStorage.setItem('refreshToken', res.data.refreshToken);
-          }
-          originalRequest.headers.Authorization = `Bearer ${res.data.token}`;
-        }
-        isRefreshing = false;
-        processQueue(null);
-        return api(originalRequest);
-      } catch (err) {
-        isRefreshing = false;
-        processQueue(err);
-        console.error('[API DEBUG] Refresh flow failed. Wiping local storage.', err);
-        localStorage.removeItem('token'); // CRITICAL: Clear token to break the infinite redirect loop
-        localStorage.removeItem('refreshToken');
-        // Removed aggressive hard redirect. Let React Router handle it gracefully!
-        return Promise.reject(err);
-      }
+  (error) => {
+    if (error.response?.status === 401 && window.location.pathname !== '/login' && window.location.pathname !== '/signup') {
+      console.warn('[API] Unauthorized. Wiping session.');
+      localStorage.removeItem('token');
+      localStorage.removeItem('refreshToken');
+      window.location.href = '/login';
     }
     return Promise.reject(error);
   }
