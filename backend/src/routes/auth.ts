@@ -17,7 +17,7 @@ import qrcode from 'qrcode';
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // Limit each IP to 10 auth requests per window
+  max: 100, // Limit each IP to 100 auth requests per window
   message: { error: 'Too many authentication attempts, please try again in 15 minutes.' }
 });
 
@@ -93,36 +93,43 @@ router.post('/signup', authLimiter, async (req: Request, res: Response) => {
     });
 
     // Send verification email
-    let smtpConfig = {
-      host: process.env.SMTP_HOST || 'smtp.ethereal.email',
-      port: parseInt(process.env.SMTP_PORT || '587'),
-      secure: process.env.SMTP_SECURE === 'true',
-      auth: { user: process.env.SMTP_USER as string, pass: process.env.SMTP_PASS as string },
-    };
+    try {
+      let smtpConfig = {
+        host: process.env.SMTP_HOST || 'smtp.ethereal.email',
+        port: parseInt(process.env.SMTP_PORT || '587'),
+        secure: process.env.SMTP_SECURE === 'true',
+        auth: { user: process.env.SMTP_USER as string, pass: process.env.SMTP_PASS as string },
+      };
 
-    if (!smtpConfig.auth.user) {
-      const testAccount = await nodemailer.createTestAccount();
-      smtpConfig.auth = { user: testAccount.user, pass: testAccount.pass };
+      if (!smtpConfig.auth.user) {
+        const testAccount = await nodemailer.createTestAccount();
+        smtpConfig.auth = { user: testAccount.user, pass: testAccount.pass };
+      }
+      const transporter = nodemailer.createTransport(smtpConfig);
+      const verifyLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login?verify=${verificationToken}`;
+
+      const info = await transporter.sendMail({
+        from: `"ComplianceBot" <${process.env.SMTP_USER || 'noreply@compliancebot.com'}>`,
+        to: user.email,
+        subject: 'Verify your email address',
+        html: `
+          <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
+            <h2 style="color: #2563eb;">Welcome to ComplianceBot!</h2>
+            <p>Hi ${user.fullName},</p>
+            <p>Please verify your email address by clicking the link below:</p>
+            <br/>
+            <a href="${verifyLink}" style="background-color: #2563eb; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">Verify Email</a>
+          </div>
+        `
+      });
+
+      if (!process.env.SMTP_USER) console.log('Verification Email preview URL: %s', nodemailer.getTestMessageUrl(info));
+    } catch (emailError) {
+      console.error('Email sending failed during signup:', emailError);
+      if (!process.env.SMTP_USER) {
+        await prisma.user.update({ where: { id: user.id }, data: { isEmailVerified: true } });
+      }
     }
-    const transporter = nodemailer.createTransport(smtpConfig);
-    const verifyLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login?verify=${verificationToken}`;
-
-    const info = await transporter.sendMail({
-      from: `"ComplianceBot" <${process.env.SMTP_USER || 'noreply@compliancebot.com'}>`,
-      to: user.email,
-      subject: 'Verify your email address',
-      html: `
-        <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
-          <h2 style="color: #2563eb;">Welcome to ComplianceBot!</h2>
-          <p>Hi ${user.fullName},</p>
-          <p>Please verify your email address by clicking the link below:</p>
-          <br/>
-          <a href="${verifyLink}" style="background-color: #2563eb; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">Verify Email</a>
-        </div>
-      `
-    });
-
-    if (!process.env.SMTP_USER) console.log('Verification Email preview URL: %s', nodemailer.getTestMessageUrl(info));
 
     res.status(201).json({
       success: true,
@@ -203,6 +210,10 @@ router.post('/login', authLimiter, async (req: Request, res: Response) => {
       maxAge: rememberMe ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000 // 30 days or 1 day
     });
 
+    const memberCount = await prisma.companyMember.count({
+      where: { userId: user.id, status: 'ACTIVE' }
+    });
+
     res.json({
       success: true,
       token,
@@ -212,7 +223,8 @@ router.post('/login', authLimiter, async (req: Request, res: Response) => {
         email: user.email,
         fullName: user.fullName,
         role: user.role,
-        isTwoFactorEnabled: user.isTwoFactorEnabled
+        isTwoFactorEnabled: user.isTwoFactorEnabled,
+        hasCompany: memberCount > 0
       }
     });
   } catch (error) {
@@ -272,11 +284,15 @@ router.post('/verify-2fa', authLimiter, async (req: Request, res: Response) => {
       maxAge: decoded.rememberMe ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000
     });
 
+    const memberCount = await prisma.companyMember.count({
+      where: { userId: user.id, status: 'ACTIVE' }
+    });
+
     res.json({
       success: true,
       token,
       refreshToken,
-      user: { id: user.id, email: user.email, fullName: user.fullName, role: user.role, isTwoFactorEnabled: user.isTwoFactorEnabled }
+      user: { id: user.id, email: user.email, fullName: user.fullName, role: user.role, isTwoFactorEnabled: user.isTwoFactorEnabled, hasCompany: memberCount > 0 }
     });
   } catch (error) {
     res.status(400).json({ error: 'Session expired or invalid. Please login again.' });
@@ -418,9 +434,13 @@ router.get('/me', auth, async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
+    const memberCount = await prisma.companyMember.count({
+      where: { userId: user.id, status: 'ACTIVE' }
+    });
+
     res.json({
       success: true,
-      user
+      user: { ...user, hasCompany: memberCount > 0 }
     });
   } catch (error) {
     console.error('Get user error:', error);
@@ -607,7 +627,7 @@ router.post('/oauth/callback', async (req: Request, res: Response) => {
       email = userData.email.toLowerCase();
       fullName = userData.name || 'Google User';
       providerId = userData.id;
-      isEmailVerified = userData.verified_email || true;
+      isEmailVerified = Boolean(userData.verified_email);
 
     } else if (provider === 'github') {
       if (!process.env.GITHUB_CLIENT_ID || !process.env.GITHUB_CLIENT_SECRET) {
@@ -675,7 +695,11 @@ router.post('/oauth/callback', async (req: Request, res: Response) => {
     res.cookie('token', token, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'none', maxAge: 30 * 24 * 60 * 60 * 1000 });
     res.cookie('refreshToken', refreshToken, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'none', maxAge: 30 * 24 * 60 * 60 * 1000 });
 
-    res.json({ success: true, token, refreshToken, user: { id: user.id, email: user.email, fullName: user.fullName, role: user.role, isTwoFactorEnabled: user.isTwoFactorEnabled } });
+    const memberCount = await prisma.companyMember.count({
+      where: { userId: user.id, status: 'ACTIVE' }
+    });
+
+    res.json({ success: true, token, refreshToken, user: { id: user.id, email: user.email, fullName: user.fullName, role: user.role, isTwoFactorEnabled: user.isTwoFactorEnabled, hasCompany: memberCount > 0 } });
   } catch (error: any) {
     console.error('OAuth callback error:', error);
     res.status(401).json({ error: error.message || 'Authentication failed' });

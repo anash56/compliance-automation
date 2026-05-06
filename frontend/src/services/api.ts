@@ -31,6 +31,7 @@ api.interceptors.response.use(
       console.warn('[API] Unauthorized. Wiping session gracefully.');
       localStorage.removeItem('token');
       localStorage.removeItem('refreshToken');
+      window.location.href = '/login';
     }
     return Promise.reject(error);
   }
