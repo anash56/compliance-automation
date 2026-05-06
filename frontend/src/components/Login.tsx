@@ -36,6 +36,22 @@ const validateEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email
 const validateFullName = (fullName: string) => /^[a-zA-Z\s]{4,30}$/.test(fullName.trim());
 const validatePassword = (password: string) => /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d@$!%*?&]{8,}$/.test(password);
 
+
+const buildFallbackOAuthUrl = (provider: 'google' | 'github') => {
+  const frontendUrl = window.location.origin;
+  const redirectUri = encodeURIComponent(`${frontendUrl}/login`);
+
+  if (provider === 'google') {
+    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+    if (!clientId) return null;
+    return `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=email profile&state=google&prompt=consent`;
+  }
+
+  const clientId = import.meta.env.VITE_GITHUB_CLIENT_ID;
+  if (!clientId) return null;
+  return `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=user:email&state=github`;
+};
+
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -269,11 +285,22 @@ export default function Login() {
   };
 
   const handleSocialRedirect = async (provider: 'google' | 'github') => {
+    setLocalError('');
     try {
       const res = await api.get(`/auth/${provider}/url`);
-      window.location.href = res.data.url;
+      const oauthUrl = res?.data?.url;
+      if (!oauthUrl || typeof oauthUrl !== 'string') {
+        throw new Error('Missing OAuth URL from server');
+      }
+      window.location.assign(oauthUrl);
+      return;
     } catch (err: any) {
-      setLocalError(`Failed to initialize ${provider} login.`);
+      const fallbackUrl = buildFallbackOAuthUrl(provider);
+      if (fallbackUrl) {
+        window.location.assign(fallbackUrl);
+        return;
+      }
+      setLocalError(`Failed to initialize ${provider} login. Please contact support to verify OAuth configuration.`);
     }
   };
 
