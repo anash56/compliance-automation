@@ -91,7 +91,7 @@ const authSlice = createSlice({
   name: 'auth',
   initialState: {
     user: null as User | null,
-    loading: false,
+    loading: true,
     error: null as string | null,
     require2FA: false,
     tempToken: null as string | null

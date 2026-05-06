@@ -61,6 +61,9 @@ export default function Login() {
   const oauthCode = urlParams.get('code');
   const oauthState = urlParams.get('state');
 
+  const getPostLoginRoute = (hasCompany?: boolean) => (hasCompany ? '/dashboard' : '/onboarding');
+
+
   useEffect(() => {
     setLocalError('');
     setSuccessMessage('');
@@ -84,7 +87,7 @@ export default function Login() {
               if (res.token) localStorage.setItem('token', res.token);
               if (res.refreshToken) localStorage.setItem('refreshToken', res.refreshToken);
             setSuccessMessage('Login successful! Redirecting...');
-            setTimeout(() => navigate('/onboarding'), 1000);
+            setTimeout(() => navigate(getPostLoginRoute(res.user?.hasCompany)), 1000);
           }
         })
         .catch((err: any) => {
@@ -195,7 +198,7 @@ export default function Login() {
               if (res.token) localStorage.setItem('token', res.token);
               if (res.refreshToken) localStorage.setItem('refreshToken', res.refreshToken);
           setSuccessMessage('Login successful! Redirecting...');
-          setTimeout(() => navigate('/onboarding'), 1000);
+          setTimeout(() => navigate(getPostLoginRoute(res.user?.hasCompany)), 1000);
         }
       } catch (err: any) {
         setLocalError(err || 'Authentication failed');
@@ -259,7 +262,7 @@ export default function Login() {
       if (res.token) localStorage.setItem('token', res.token);
       if (res.refreshToken) localStorage.setItem('refreshToken', res.refreshToken);
       setSuccessMessage('Verification successful! Redirecting...');
-      setTimeout(() => navigate('/onboarding'), 1000);
+      setTimeout(() => navigate(getPostLoginRoute(res.user?.hasCompany)), 1000);
     } catch (err: any) {
       setLocalError(err || 'Invalid authenticator code');
     }
