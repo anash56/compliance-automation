@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { login, signup, clearError, verify2FA, socialLogin } from '../store/slices/authSlice';
@@ -58,6 +58,8 @@ export default function Login() {
   const oauthCode = urlParams.get('code');
   const oauthState = urlParams.get('state');
 
+  const socialAuthAttempted = useRef(false);
+
   useEffect(() => {
     setLocalError('');
     setSuccessMessage('');
@@ -68,6 +70,9 @@ export default function Login() {
 
   useEffect(() => {
     if (oauthCode && oauthState && !isSignup && !resetToken && !verifyToken) {
+      if (socialAuthAttempted.current) return;
+      socialAuthAttempted.current = true;
+
       const provider = oauthState;
       dispatch(socialLogin({ provider, code: oauthCode }))
         .unwrap()

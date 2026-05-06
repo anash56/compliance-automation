@@ -559,7 +559,7 @@ router.get('/google/url', (req: Request, res: Response) => {
   const clientId = process.env.GOOGLE_CLIENT_ID || '';
   const redirectUri = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login`;
   const encodedRedirectUri = encodeURIComponent(redirectUri);
-  const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodedRedirectUri}&response_type=code&scope=email profile&state=google`;
+  const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodedRedirectUri}&response_type=code&scope=email profile&state=google&prompt=consent`;
   res.json({ url });
 });
 
