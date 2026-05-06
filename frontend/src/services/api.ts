@@ -28,10 +28,9 @@ api.interceptors.response.use(
 (response) => response,
   (error) => {
     if (error.response?.status === 401 && window.location.pathname !== '/login' && window.location.pathname !== '/signup') {
-      console.warn('[API] Unauthorized. Wiping session.');
+      console.warn('[API] Unauthorized. Wiping session gracefully.');
       localStorage.removeItem('token');
       localStorage.removeItem('refreshToken');
-      window.location.href = '/login';
     }
     return Promise.reject(error);
   }
