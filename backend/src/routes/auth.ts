@@ -205,6 +205,7 @@ router.post('/login', authLimiter, async (req: Request, res: Response) => {
 
     res.json({
       success: true,
+      token,
       user: {
         id: user.id,
         email: user.email,
@@ -272,6 +273,7 @@ router.post('/verify-2fa', authLimiter, async (req: Request, res: Response) => {
 
     res.json({
       success: true,
+      token,
       user: { id: user.id, email: user.email, fullName: user.fullName, role: user.role, isTwoFactorEnabled: user.isTwoFactorEnabled }
     });
   } catch (error) {
@@ -374,7 +376,7 @@ router.post('/refresh', async (req: Request, res: Response) => {
       maxAge: 15 * 60 * 1000 // 15 minutes
     });
 
-    res.json({ success: true });
+    res.json({ success: true, token });
   } catch (error) {
     res.status(401).json({ error: 'Invalid or expired refresh token' });
   }
@@ -554,14 +556,16 @@ router.put('/profile', auth, async (req: Request, res: Response) => {
 router.get('/google/url', (req: Request, res: Response) => {
   const clientId = process.env.GOOGLE_CLIENT_ID || '';
   const redirectUri = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login`;
-  const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=email profile&state=google`;
+  const encodedRedirectUri = encodeURIComponent(redirectUri);
+  const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodedRedirectUri}&response_type=code&scope=email profile&state=google`;
   res.json({ url });
 });
 
 router.get('/github/url', (req: Request, res: Response) => {
   const clientId = process.env.GITHUB_CLIENT_ID || '';
   const redirectUri = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login`;
-  const url = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=user:email&state=github`;
+  const encodedRedirectUri = encodeURIComponent(redirectUri);
+  const url = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodedRedirectUri}&scope=user:email&state=github`;
   res.json({ url });
 });
 
@@ -669,7 +673,7 @@ router.post('/oauth/callback', async (req: Request, res: Response) => {
     res.cookie('token', token, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'none', maxAge: 15 * 60 * 1000 });
     res.cookie('refreshToken', refreshToken, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'none', maxAge: 30 * 24 * 60 * 60 * 1000 });
 
-    res.json({ success: true, user: { id: user.id, email: user.email, fullName: user.fullName, role: user.role, isTwoFactorEnabled: user.isTwoFactorEnabled } });
+    res.json({ success: true, token, user: { id: user.id, email: user.email, fullName: user.fullName, role: user.role, isTwoFactorEnabled: user.isTwoFactorEnabled } });
   } catch (error: any) {
     console.error('OAuth callback error:', error);
     res.status(401).json({ error: error.message || 'Authentication failed' });
