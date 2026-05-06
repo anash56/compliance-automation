@@ -51,7 +51,12 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        await axios.post(`${API_URL}/auth/refresh`, {}, { withCredentials: true });
+        const refreshToken = localStorage.getItem('refreshToken');
+        const res = await axios.post(`${API_URL}/auth/refresh`, { refreshToken }, { withCredentials: true });
+        
+        if (res.data.token) {
+          localStorage.setItem('token', res.data.token);
+        }
         isRefreshing = false;
         processQueue(null);
         return api(originalRequest);
@@ -59,6 +64,7 @@ api.interceptors.response.use(
         isRefreshing = false;
         processQueue(err);
         localStorage.removeItem('token'); // CRITICAL: Clear token to break the infinite redirect loop
+        localStorage.removeItem('refreshToken');
         window.location.href = '/login';
         return Promise.reject(err);
       }

@@ -74,6 +74,7 @@ export default function Login() {
         .then((res) => {
           if (!res.require2FA) {
               if (res.token) localStorage.setItem('token', res.token);
+              if (res.refreshToken) localStorage.setItem('refreshToken', res.refreshToken);
             setSuccessMessage('Login successful! Redirecting...');
             setTimeout(() => navigate('/onboarding'), 1000);
           }
@@ -186,6 +187,7 @@ export default function Login() {
         const res = await dispatch(login({ email, password, rememberMe })).unwrap();
         if (!res.require2FA) {
               if (res.token) localStorage.setItem('token', res.token);
+              if (res.refreshToken) localStorage.setItem('refreshToken', res.refreshToken);
           setSuccessMessage('Login successful! Redirecting...');
           setTimeout(() => navigate('/onboarding'), 1000);
         }
@@ -249,6 +251,7 @@ export default function Login() {
     try {
       const res = await dispatch(verify2FA({ tempToken, code: twoFactorCode })).unwrap();
       if (res.token) localStorage.setItem('token', res.token);
+      if (res.refreshToken) localStorage.setItem('refreshToken', res.refreshToken);
       setSuccessMessage('Verification successful! Redirecting...');
       setTimeout(() => navigate('/onboarding'), 1000);
     } catch (err: any) {

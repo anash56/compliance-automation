@@ -206,6 +206,7 @@ router.post('/login', authLimiter, async (req: Request, res: Response) => {
     res.json({
       success: true,
       token,
+      refreshToken,
       user: {
         id: user.id,
         email: user.email,
@@ -274,6 +275,7 @@ router.post('/verify-2fa', authLimiter, async (req: Request, res: Response) => {
     res.json({
       success: true,
       token,
+      refreshToken,
       user: { id: user.id, email: user.email, fullName: user.fullName, role: user.role, isTwoFactorEnabled: user.isTwoFactorEnabled }
     });
   } catch (error) {
@@ -358,10 +360,10 @@ router.post('/verify-email', authLimiter, async (req: Request, res: Response) =>
 // Refresh Token
 router.post('/refresh', async (req: Request, res: Response) => {
   try {
-    const { refreshToken } = req.cookies;
-    if (!refreshToken) return res.status(401).json({ error: 'No refresh token provided' });
+    const tokenToRefresh = req.cookies?.refreshToken || req.body?.refreshToken;
+    if (!tokenToRefresh) return res.status(401).json({ error: 'No refresh token provided' });
 
-    const decoded = jwt.verify(refreshToken, getJwtSecret()) as any;
+    const decoded = jwt.verify(tokenToRefresh, getJwtSecret()) as any;
     if (decoded.type !== 'refresh') return res.status(401).json({ error: 'Invalid token type' });
 
     const user: any = await (prisma.user as any).findUnique({ where: { id: decoded.userId } });
@@ -673,7 +675,7 @@ router.post('/oauth/callback', async (req: Request, res: Response) => {
     res.cookie('token', token, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'none', maxAge: 15 * 60 * 1000 });
     res.cookie('refreshToken', refreshToken, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'none', maxAge: 30 * 24 * 60 * 60 * 1000 });
 
-    res.json({ success: true, token, user: { id: user.id, email: user.email, fullName: user.fullName, role: user.role, isTwoFactorEnabled: user.isTwoFactorEnabled } });
+    res.json({ success: true, token, refreshToken, user: { id: user.id, email: user.email, fullName: user.fullName, role: user.role, isTwoFactorEnabled: user.isTwoFactorEnabled } });
   } catch (error: any) {
     console.error('OAuth callback error:', error);
     res.status(401).json({ error: error.message || 'Authentication failed' });
