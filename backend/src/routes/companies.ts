@@ -38,6 +38,7 @@ router.post('/', auth, async (req: Request, res: Response) => {
     const normalizedPan = pan ? String(pan).trim().toUpperCase() : null;
     const normalizedCompanyName = String(companyName || '').trim();
     const normalizedState = String(state || '').trim();
+    const parsedEmployeesCount = employeesCount ? parseInt(String(employeesCount), 10) : null;
 
     if (!normalizedCompanyName || !normalizedState) {
       return res.status(400).json({ error: 'Company name and state are required' });
@@ -59,7 +60,7 @@ router.post('/', auth, async (req: Request, res: Response) => {
           companyName: normalizedCompanyName,
           state: normalizedState,
           pan: normalizedPan,
-          employeesCount,
+          employeesCount: parsedEmployeesCount,
           businessType,
         },
       });
@@ -84,7 +85,7 @@ router.post('/', auth, async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'GST number already exists' });
     }
     console.error('Create company error:', error);
-    res.status(500).json({ error: 'Failed to create company' });
+    res.status(500).json({ error: error?.message || 'Failed to create company' });
   }
 });
 
@@ -597,6 +598,7 @@ router.put('/:id', auth, authorizeMember(['OWNER', 'ADMIN']), async (req: Reques
     const normalizedPan = pan ? String(pan).trim().toUpperCase() : null;
     const normalizedCompanyName = String(companyName || '').trim();
     const normalizedState = String(state || '').trim();
+    const parsedEmployeesCount = employeesCount ? parseInt(String(employeesCount), 10) : null;
 
     if (!normalizedCompanyName || !normalizedState) {
       return res.status(400).json({ error: 'Company name and state are required' });
@@ -617,7 +619,7 @@ router.put('/:id', auth, authorizeMember(['OWNER', 'ADMIN']), async (req: Reques
         companyName: normalizedCompanyName,
         state: normalizedState,
         pan: normalizedPan,
-        employeesCount,
+        employeesCount: parsedEmployeesCount,
         businessType
       }
     });
@@ -631,7 +633,7 @@ router.put('/:id', auth, authorizeMember(['OWNER', 'ADMIN']), async (req: Reques
       return res.status(400).json({ error: 'GST number already exists' });
     }
     console.error('Update company error:', error);
-    res.status(500).json({ error: 'Failed to update company' });
+    res.status(500).json({ error: error?.message || 'Failed to update company' });
   }
 });
 

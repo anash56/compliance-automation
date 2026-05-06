@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { login, signup, clearError, verify2FA, socialLogin } from '../store/slices/authSlice';
@@ -27,6 +27,9 @@ const getPasswordStrength = (password: string) => {
 
   return levels[Math.min(strength, 5)];
 };
+
+// Keep track of used OAuth codes to survive React StrictMode double-renders
+const processedOAuthCodes = new Set<string>();
 
 // Validation helpers
 const validateEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -58,8 +61,6 @@ export default function Login() {
   const oauthCode = urlParams.get('code');
   const oauthState = urlParams.get('state');
 
-  const socialAuthAttempted = useRef(false);
-
   useEffect(() => {
     setLocalError('');
     setSuccessMessage('');
@@ -70,8 +71,10 @@ export default function Login() {
 
   useEffect(() => {
     if (oauthCode && oauthState && !isSignup && !resetToken && !verifyToken) {
-      if (socialAuthAttempted.current) return;
-      socialAuthAttempted.current = true;
+      if (processedOAuthCodes.has(oauthCode)) return;
+      processedOAuthCodes.add(oauthCode);
+      
+      window.history.replaceState({}, document.title, '/login');
 
       const provider = oauthState;
       dispatch(socialLogin({ provider, code: oauthCode }))
@@ -83,11 +86,9 @@ export default function Login() {
             setSuccessMessage('Login successful! Redirecting...');
             setTimeout(() => navigate('/onboarding'), 1000);
           }
-          window.history.replaceState({}, document.title, '/login');
         })
         .catch((err: any) => {
           setLocalError(err || 'Social authentication failed');
-          window.history.replaceState({}, document.title, '/login');
         });
     }
   }, [oauthCode, oauthState, dispatch, navigate, isSignup, resetToken, verifyToken]);
