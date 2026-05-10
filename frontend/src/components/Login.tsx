@@ -163,14 +163,19 @@ export default function Login() {
 
       try {
         const res = await dispatch(signup({ email, password, fullName })).unwrap();
-        setSuccessMessage(res.message || 'Account created! Please check your email to verify.');
-        setTimeout(() => {
-          navigate('/login');
-          setEmail('');
-          setPassword('');
-          setConfirmPassword('');
-          setFullName('');
-        }, 3000);
+        if (res.token) {
+          setSuccessMessage('Account created successfully! Redirecting...');
+          setTimeout(() => navigate('/onboarding'), 1000);
+        } else {
+          setSuccessMessage(res.message || 'Account created! Please check your email to verify.');
+          setTimeout(() => {
+            navigate('/login');
+            setEmail('');
+            setPassword('');
+            setConfirmPassword('');
+            setFullName('');
+          }, 3000);
+        }
       } catch (err: any) {
         setLocalError(err || 'Signup failed');
       }
