@@ -20,6 +20,9 @@ dotenv.config();
 const app: Express = express();
 const PORT = process.env.PORT || 5000;
 
+// Trust proxy (Needed for secure cross-site cookies on platforms like Render)
+app.set('trust proxy', 1);
+
 // Export prisma for use in other files
 export const prisma = new PrismaClient();
 
