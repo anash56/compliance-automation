@@ -80,6 +80,9 @@ router.post('/signup', authLimiter, async (req: Request, res: Response) => {
     // Generate Verification Token
     const verificationToken = crypto.randomBytes(32).toString('hex');
 
+    // Auto-verify if no real SMTP is configured so users aren't locked out
+    const hasSmtp = !!process.env.SMTP_USER;
+
     // Create user
     const user = await prisma.user.create({
       data: {
@@ -87,42 +90,36 @@ router.post('/signup', authLimiter, async (req: Request, res: Response) => {
         password: hashedPassword,
         fullName: fullName.trim(),
         role: 'business_owner',
-        isEmailVerified: false,
+        isEmailVerified: !hasSmtp,
         verificationToken
       }
     });
 
     // Send verification email
-    let smtpConfig = {
-      host: process.env.SMTP_HOST || 'smtp.ethereal.email',
-      port: parseInt(process.env.SMTP_PORT || '587'),
-      secure: process.env.SMTP_SECURE === 'true',
-      auth: { user: process.env.SMTP_USER as string, pass: process.env.SMTP_PASS as string },
-    };
+    if (hasSmtp) {
+      const transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST,
+        port: parseInt(process.env.SMTP_PORT || '587'),
+        secure: process.env.SMTP_SECURE === 'true',
+        auth: { user: process.env.SMTP_USER as string, pass: process.env.SMTP_PASS as string },
+      });
+      const verifyLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login?verify=${verificationToken}`;
 
-    if (!smtpConfig.auth.user) {
-      const testAccount = await nodemailer.createTestAccount();
-      smtpConfig.auth = { user: testAccount.user, pass: testAccount.pass };
+      await transporter.sendMail({
+        from: `"ComplianceBot" <${process.env.SMTP_USER}>`,
+        to: user.email,
+        subject: 'Verify your email address',
+        html: `
+          <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
+            <h2 style="color: #2563eb;">Welcome to ComplianceBot!</h2>
+            <p>Hi ${user.fullName},</p>
+            <p>Please verify your email address by clicking the link below:</p>
+            <br/>
+            <a href="${verifyLink}" style="background-color: #2563eb; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">Verify Email</a>
+          </div>
+        `
+      });
     }
-    const transporter = nodemailer.createTransport(smtpConfig);
-    const verifyLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login?verify=${verificationToken}`;
-
-    const info = await transporter.sendMail({
-      from: `"ComplianceBot" <${process.env.SMTP_USER || 'noreply@compliancebot.com'}>`,
-      to: user.email,
-      subject: 'Verify your email address',
-      html: `
-        <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
-          <h2 style="color: #2563eb;">Welcome to ComplianceBot!</h2>
-          <p>Hi ${user.fullName},</p>
-          <p>Please verify your email address by clicking the link below:</p>
-          <br/>
-          <a href="${verifyLink}" style="background-color: #2563eb; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">Verify Email</a>
-        </div>
-      `
-    });
-
-    if (!process.env.SMTP_USER) console.log('Verification Email preview URL: %s', nodemailer.getTestMessageUrl(info));
 
     res.status(201).json({
       success: true,
@@ -445,19 +442,15 @@ router.post('/forgot-password', authLimiter, async (req: Request, res: Response)
       { expiresIn: '15m' }
     );
 
-    let smtpConfig = {
-      host: process.env.SMTP_HOST || 'smtp.ethereal.email',
-      port: parseInt(process.env.SMTP_PORT || '587'),
-      secure: process.env.SMTP_SECURE === 'true',
-      auth: { user: process.env.SMTP_USER as string, pass: process.env.SMTP_PASS as string },
-    };
-
-    if (!smtpConfig.auth.user) {
-      const testAccount = await nodemailer.createTestAccount();
-      smtpConfig.auth = { user: testAccount.user, pass: testAccount.pass };
+    if (!process.env.SMTP_USER) {
+      const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login?reset=${resetToken}`;
+      console.log('--- FORGOT PASSWORD LINK (DEV ONLY) ---');
+      console.log(resetLink);
+      console.log('---------------------------------------');
+      return res.json({ success: true, message: 'SMTP not configured. Link printed to server console.' });
     }
 
-    const transporter = nodemailer.createTransport(smtpConfig);
+    const transporter = nodemailer.createTransport({ host: process.env.SMTP_HOST, port: parseInt(process.env.SMTP_PORT || '587'), secure: process.env.SMTP_SECURE === 'true', auth: { user: process.env.SMTP_USER as string, pass: process.env.SMTP_PASS as string } });
     const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login?reset=${resetToken}`;
 
     const info = await transporter.sendMail({
@@ -477,7 +470,6 @@ router.post('/forgot-password', authLimiter, async (req: Request, res: Response)
       `
     });
 
-    if (!process.env.SMTP_USER) console.log('Password Reset Email preview URL: %s', nodemailer.getTestMessageUrl(info));
     res.json({ success: true, message: 'If an account exists, a reset link has been sent.' });
   } catch (error) {
     console.error('Forgot password error:', error);

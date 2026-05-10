@@ -660,22 +660,12 @@ router.post('/:id/reminders', auth, authorizeMember(['OWNER', 'ADMIN', 'EDITOR',
       return res.status(404).json({ error: 'User or company not found' });
     }
 
-    let smtpConfig = {
-      host: process.env.SMTP_HOST || 'smtp.ethereal.email',
-      port: parseInt(process.env.SMTP_PORT || '587'),
-      secure: process.env.SMTP_SECURE === 'true',
-      auth: {
-        user: process.env.SMTP_USER as string,
-        pass: process.env.SMTP_PASS as string,
-      },
-    };
-
-    if (!smtpConfig.auth.user) {
-      const testAccount = await nodemailer.createTestAccount();
-      smtpConfig.auth = { user: testAccount.user, pass: testAccount.pass };
+    if (!process.env.SMTP_USER) {
+      console.log('Skipping email reminders - no SMTP configured');
+      return res.json({ success: true, message: 'Reminders generated (Email skipped, SMTP not configured)' });
     }
 
-    const transporter = nodemailer.createTransport(smtpConfig);
+    const transporter = nodemailer.createTransport({ host: process.env.SMTP_HOST, port: parseInt(process.env.SMTP_PORT || '587'), secure: process.env.SMTP_SECURE === 'true', auth: { user: process.env.SMTP_USER as string, pass: process.env.SMTP_PASS as string } });
 
     const deadlinesHtml = deadlines.map((d: any) => `
       <li style="margin-bottom: 12px; padding: 10px; background-color: #f9fafb; border-left: 4px solid ${d.color === 'red' ? '#ef4444' : d.color === 'orange' ? '#f97316' : '#eab308'}; border-radius: 4px;">
@@ -704,10 +694,6 @@ router.post('/:id/reminders', auth, authorizeMember(['OWNER', 'ADMIN', 'EDITOR',
         </div>
       `
     });
-
-    if (!process.env.SMTP_USER) {
-      console.log('Email preview URL: %s', nodemailer.getTestMessageUrl(info));
-    }
 
     res.json({ success: true, message: 'Reminders sent via email' });
   } catch (error) {
@@ -760,22 +746,11 @@ router.post('/:id/members', auth, authorizeMember(['OWNER', 'ADMIN']), async (re
     });
 
     // --- Send Real Email Notification ---
-    let smtpConfigInvite = {
-      host: process.env.SMTP_HOST || 'smtp.ethereal.email',
-      port: parseInt(process.env.SMTP_PORT || '587'),
-      secure: process.env.SMTP_SECURE === 'true',
-      auth: {
-        user: process.env.SMTP_USER as string,
-        pass: process.env.SMTP_PASS as string,
-      },
-    };
-
-    if (!smtpConfigInvite.auth.user) {
-      const testAccount = await nodemailer.createTestAccount();
-      smtpConfigInvite.auth = { user: testAccount.user, pass: testAccount.pass };
+    if (!process.env.SMTP_USER) {
+      return res.json({ success: true, member: newMember, message: 'Team member added. (Invite email skipped, SMTP not configured)' });
     }
 
-    const transporter = nodemailer.createTransport(smtpConfigInvite);
+    const transporter = nodemailer.createTransport({ host: process.env.SMTP_HOST, port: parseInt(process.env.SMTP_PORT || '587'), secure: process.env.SMTP_SECURE === 'true', auth: { user: process.env.SMTP_USER as string, pass: process.env.SMTP_PASS as string } });
 
     try {
       const info = await transporter.sendMail({
@@ -793,9 +768,6 @@ router.post('/:id/members', auth, authorizeMember(['OWNER', 'ADMIN']), async (re
           </div>
         `
       });
-      if (!process.env.SMTP_USER) {
-        console.log('Invite Email preview URL: %s', nodemailer.getTestMessageUrl(info));
-      }
     } catch (emailError) {
       console.error('Email sending failed (Check SMTP settings in .env):', emailError);
     }
