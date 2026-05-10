@@ -521,7 +521,7 @@ router.post('/reset-password', authLimiter, async (req: Request, res: Response) 
     const { token, newPassword } = req.body;
     if (!token || !newPassword) return res.status(400).json({ error: 'Token and new password are required' });
 
-    const passwordStrengthRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d@$!%*?&]{8,}$/;
+    const passwordStrengthRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
     if (!passwordStrengthRegex.test(newPassword)) return res.status(400).json({ error: 'Password must contain at least one uppercase letter, one lowercase letter, and one number' });
 
     const decoded = jwt.verify(token, getJwtSecret()) as any;
@@ -547,9 +547,9 @@ router.put('/profile', auth, async (req: Request, res: Response) => {
     const updates: any = {};
 
     if (fullName) {
-      const fullNameRegex = /^[a-zA-Z\s]{4,30}$/;
+      const fullNameRegex = /^[a-zA-Z\s.'-]{2,50}$/;
       if (!fullNameRegex.test(fullName.trim())) {
-        return res.status(400).json({ error: 'Full name must be 4-30 characters with only letters and spaces' });
+        return res.status(400).json({ error: 'Full name must be 2-50 characters' });
       }
       updates.fullName = fullName.trim();
     }
@@ -560,7 +560,7 @@ router.put('/profile', auth, async (req: Request, res: Response) => {
       const isPasswordValid = await bcryptjs.compare(currentPassword, user.password);
       if (!isPasswordValid) return res.status(401).json({ error: 'Invalid current password' });
 
-      const passwordStrengthRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d@$!%*?&]{8,}$/;
+      const passwordStrengthRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
       if (!passwordStrengthRegex.test(newPassword)) {
         return res.status(400).json({ error: 'New password must contain uppercase, lowercase, and a number' });
       }

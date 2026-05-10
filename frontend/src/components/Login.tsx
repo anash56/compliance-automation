@@ -30,8 +30,8 @@ const getPasswordStrength = (password: string) => {
 
 // Validation helpers
 const validateEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-const validateFullName = (fullName: string) => /^[a-zA-Z\s]{4,30}$/.test(fullName.trim());
-const validatePassword = (password: string) => /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d@$!%*?&]{8,}$/.test(password);
+const validateFullName = (fullName: string) => /^[a-zA-Z\s.'-]{2,50}$/.test(fullName.trim());
+const validatePassword = (password: string) => /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/.test(password);
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -110,7 +110,7 @@ export default function Login() {
     const errors: Record<string, string> = {};
     
     if (fullName && !validateFullName(fullName)) {
-      errors.fullName = 'Full name must be 4-30 characters with only letters and spaces';
+      errors.fullName = 'Full name must be 2-50 characters';
     }
     
     if (email && !validateEmail(email)) {
@@ -142,7 +142,7 @@ export default function Login() {
       }
 
       if (!validateFullName(fullName)) {
-        setLocalError('Full name must be 4-30 characters with only letters and spaces');
+        setLocalError('Full name must be 2-50 characters');
         return;
       }
 
@@ -177,7 +177,7 @@ export default function Login() {
           }, 3000);
         }
       } catch (err: any) {
-        setLocalError(err || 'Signup failed');
+        setLocalError(typeof err === 'string' ? err : err?.message || 'Signup failed');
       }
     } else {
       // Login validation
@@ -193,7 +193,7 @@ export default function Login() {
           setTimeout(() => navigate('/onboarding'), 1000);
         }
       } catch (err: any) {
-        setLocalError(err || 'Authentication failed');
+        setLocalError(typeof err === 'string' ? err : err?.message || 'Authentication failed');
       }
     }
   };
