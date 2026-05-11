@@ -74,7 +74,7 @@ export default function Login() {
         .then((res) => {
           if (!res.require2FA) {
             setSuccessMessage('Login successful! Redirecting...');
-            setTimeout(() => navigate('/onboarding'), 1000);
+            setTimeout(() => navigate('/dashboard'), 1000);
           }
           window.history.replaceState({}, document.title, '/login');
         })
@@ -190,7 +190,7 @@ export default function Login() {
         const res = await dispatch(login({ email, password, rememberMe })).unwrap();
         if (!res.require2FA) {
           setSuccessMessage('Login successful! Redirecting...');
-          setTimeout(() => navigate('/onboarding'), 1000);
+          setTimeout(() => navigate('/dashboard'), 1000);
         }
       } catch (err: any) {
         setLocalError(typeof err === 'string' ? err : err?.message || 'Authentication failed');
@@ -252,7 +252,7 @@ export default function Login() {
     try {
       await dispatch(verify2FA({ tempToken, code: twoFactorCode })).unwrap();
       setSuccessMessage('Verification successful! Redirecting...');
-      setTimeout(() => navigate('/onboarding'), 1000);
+      setTimeout(() => navigate('/dashboard'), 1000);
     } catch (err: any) {
       setLocalError(err || 'Invalid authenticator code');
     }
