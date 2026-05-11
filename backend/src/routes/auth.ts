@@ -87,40 +87,49 @@ router.post('/signup', authLimiter, async (req: Request, res: Response) => {
         password: hashedPassword,
         fullName: fullName.trim(),
         role: 'business_owner',
-        isEmailVerified: true, // Auto-verify all new signups
+        isEmailVerified: false, // Require email verification
         verificationToken
       }
     });
 
-    // Always Auto-login immediately regardless of SMTP configuration
-    const token = jwt.sign({ userId: user.id }, getJwtSecret(), { expiresIn: '15m' });
-    const refreshToken = jwt.sign({ userId: user.id, type: 'refresh' }, getJwtSecret(), { expiresIn: '1d' });
+    const hasSmtp = !!process.env.SMTP_USER;
 
-    res.cookie('token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-      maxAge: 15 * 60 * 1000 // 15 minutes
-    });
+    // Send email asynchronously in the background so the request doesn't hang
+    if (hasSmtp) {
+      const transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST,
+        port: parseInt(process.env.SMTP_PORT || '587'),
+        secure: process.env.SMTP_SECURE === 'true',
+        auth: { user: process.env.SMTP_USER as string, pass: process.env.SMTP_PASS as string }
+      });
+      const verifyLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login?verify=${verificationToken}`;
 
-    res.cookie('refreshToken', refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-      maxAge: 24 * 60 * 60 * 1000 // 1 day
-    });
+      transporter.sendMail({
+        from: `"ComplianceBot" <${process.env.SMTP_USER}>`,
+        to: user.email,
+        subject: 'Verify your email address',
+        html: `
+          <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
+            <h2 style="color: #2563eb;">Welcome to ComplianceBot!</h2>
+            <p>Hi ${user.fullName},</p>
+            <p>Please verify your email address by clicking the link below:</p>
+            <br/>
+            <a href="${verifyLink}" style="background-color: #2563eb; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">Verify Email</a>
+          </div>
+        `
+      }).catch(async (emailErr: any) => {
+        console.error('Background email failed. Auto-verifying user to prevent lockout:', emailErr);
+        // Failsafe: Automatically verify the user in the DB if SMTP fails
+        await prisma.user.update({ where: { id: user.id }, data: { isEmailVerified: true } });
+      });
+    } else {
+      // Auto verify if no SMTP setup at all
+      await prisma.user.update({ where: { id: user.id }, data: { isEmailVerified: true } });
+    }
 
     return res.status(201).json({
       success: true,
-      message: 'Account created successfully!',
-      token,
-      user: {
-        id: user.id,
-        email: user.email,
-        fullName: user.fullName,
-        role: user.role,
-        isTwoFactorEnabled: false
-      }
+      message: hasSmtp ? 'Account created successfully! Please check your email to verify.' : 'Account created successfully! Auto-verified for development.'
     });
   } catch (error) {
     console.error('Signup error:', error);
@@ -155,6 +164,10 @@ router.post('/login', authLimiter, async (req: Request, res: Response) => {
     const isPasswordValid = await bcryptjs.compare(password, user.password);
     if (!isPasswordValid) {
       return res.status(401).json({ error: 'Invalid email or password' });
+    }
+
+    if (!user.isEmailVerified) {
+      return res.status(403).json({ error: 'Please verify your email address before logging in.' });
     }
 
     if (user.isTwoFactorEnabled) {
