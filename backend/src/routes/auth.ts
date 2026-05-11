@@ -83,14 +83,13 @@ router.post('/signup', authLimiter, async (req: Request, res: Response) => {
     // Auto-verify if no real SMTP is configured so users aren't locked out
     const hasSmtp = !!process.env.SMTP_USER;
 
-    // Create user
     const user = await prisma.user.create({
       data: {
         email: email.toLowerCase(),
         password: hashedPassword,
         fullName: fullName.trim(),
         role: 'business_owner',
-        isEmailVerified: !hasSmtp,
+        isEmailVerified: true, // Auto-verify all new signups to prevent lockouts
         verificationToken
       }
     });
@@ -119,14 +118,8 @@ router.post('/signup', authLimiter, async (req: Request, res: Response) => {
             <a href="${verifyLink}" style="background-color: #2563eb; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">Verify Email</a>
           </div>
         `
-      }).catch(async (emailErr: any) => {
-        console.error('Email sending failed during signup, falling back to auto-verify:', emailErr);
-        try {
-          await prisma.user.update({
-            where: { id: user.id },
-            data: { isEmailVerified: true }
-          });
-        } catch (e) {}
+      }).catch((emailErr: any) => {
+        console.error('Background email sending failed during signup (user is already verified):', emailErr);
       });
     }
 
