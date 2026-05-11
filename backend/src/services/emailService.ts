@@ -12,7 +12,8 @@ if (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) {
       user: process.env.GMAIL_USER,
       pass: process.env.GMAIL_APP_PASSWORD,
     },
-  });
+    family: 4, // Force IPv4 to prevent IPv6 ENETUNREACH errors on cloud hosts like Render
+  } as any);
   console.log('📧 Nodemailer (Gmail) service configured and ready to send emails.');
 } else {
   console.warn('⚠️ Email service is not configured. Emails will be printed to the console. Please set GMAIL_USER and GMAIL_APP_PASSWORD in .env');
