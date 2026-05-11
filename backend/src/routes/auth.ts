@@ -80,48 +80,16 @@ router.post('/signup', authLimiter, async (req: Request, res: Response) => {
     // Generate Verification Token
     const verificationToken = crypto.randomBytes(32).toString('hex');
 
-    // Auto-verify if no real SMTP is configured so users aren't locked out
-    const hasSmtp = !!process.env.SMTP_USER;
-
     const user = await prisma.user.create({
       data: {
         email: email.toLowerCase(),
         password: hashedPassword,
         fullName: fullName.trim(),
         role: 'business_owner',
-        isEmailVerified: true, // Auto-verify all new signups to prevent lockouts
+        isEmailVerified: true, // Auto-verify all new signups
         verificationToken
       }
     });
-
-    // Send verification email
-    if (hasSmtp) {
-      const transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: parseInt(process.env.SMTP_PORT || '587'),
-        secure: process.env.SMTP_SECURE === 'true',
-        auth: { user: process.env.SMTP_USER as string, pass: process.env.SMTP_PASS as string }
-      });
-      const verifyLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login?verify=${verificationToken}`;
-
-      // Run asynchronously, do not await to avoid hanging the request
-      transporter.sendMail({
-        from: `"ComplianceBot" <${process.env.SMTP_USER}>`,
-        to: user.email,
-        subject: 'Verify your email address',
-        html: `
-          <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
-            <h2 style="color: #2563eb;">Welcome to ComplianceBot!</h2>
-            <p>Hi ${user.fullName},</p>
-            <p>Please verify your email address by clicking the link below:</p>
-            <br/>
-            <a href="${verifyLink}" style="background-color: #2563eb; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">Verify Email</a>
-          </div>
-        `
-      }).catch((emailErr: any) => {
-        console.error('Background email sending failed during signup (user is already verified):', emailErr);
-      });
-    }
 
     // Always Auto-login immediately regardless of SMTP configuration
     const token = jwt.sign({ userId: user.id }, getJwtSecret(), { expiresIn: '15m' });
@@ -143,7 +111,7 @@ router.post('/signup', authLimiter, async (req: Request, res: Response) => {
 
     return res.status(201).json({
       success: true,
-      message: hasSmtp ? 'Account created successfully! A verification email has been sent.' : 'Account created successfully!',
+      message: 'Account created successfully!',
       token,
       user: {
         id: user.id,
