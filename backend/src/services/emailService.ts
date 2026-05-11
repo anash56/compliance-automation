@@ -1,5 +1,9 @@
 // src/services/emailService.ts
 import nodemailer from 'nodemailer';
+import dns from 'dns';
+
+// Force Node.js to prefer IPv4 over IPv6 globally for DNS resolution to fix ENETUNREACH on cloud hosts
+dns.setDefaultResultOrder('ipv4first');
 
 let transporter: nodemailer.Transporter | null = null;
 
