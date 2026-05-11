@@ -4,8 +4,6 @@ import express, { Router, Request, Response } from 'express';
 import { prisma } from '../server';
 import auth from '../middleware/auth';
 import { authorizeMember } from '../middleware/authorize';
-// @ts-ignore
-import nodemailer from 'nodemailer';
 
 const router: Router = express.Router();
 const gstPattern = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]{3}$/i;
@@ -660,10 +658,9 @@ router.post('/:id/reminders', auth, authorizeMember(['OWNER', 'ADMIN', 'EDITOR',
       return res.status(404).json({ error: 'User or company not found' });
     }
 
-    const hasSmtp = !!process.env.SMTP_USER;
     const hasResend = !!process.env.RESEND_API_KEY;
 
-    if (!hasSmtp && !hasResend) {
+    if (!hasResend) {
       console.log('Skipping email reminders - no email service configured');
       return res.json({ success: true, message: 'Reminders generated (Email skipped, no email service configured)' });
     }
@@ -691,26 +688,16 @@ router.post('/:id/reminders', auth, authorizeMember(['OWNER', 'ADMIN', 'EDITOR',
       </div>
     `;
 
-    if (hasResend) {
-      await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          from: 'ComplianceBot <onboarding@resend.dev>',
-          to: [user.email],
-          subject: `📅 Upcoming Deadlines: ${company.companyName}`,
-          html: emailHtml
-        })
-      });
-    } else {
-      const transporter = nodemailer.createTransport({ host: process.env.SMTP_HOST, port: parseInt(process.env.SMTP_PORT || '587'), secure: process.env.SMTP_SECURE === 'true', auth: { user: process.env.SMTP_USER as string, pass: process.env.SMTP_PASS as string } });
-      await transporter.sendMail({
-        from: `"ComplianceBot" <${process.env.SMTP_USER || 'noreply@compliancebot.com'}>`,
-        to: user.email,
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: 'ComplianceBot <onboarding@resend.dev>',
+        to: [user.email],
         subject: `📅 Upcoming Deadlines: ${company.companyName}`,
         html: emailHtml
-      });
-    }
+      })
+    });
 
     res.json({ success: true, message: 'Reminders sent via email' });
   } catch (error) {
@@ -763,10 +750,9 @@ router.post('/:id/members', auth, authorizeMember(['OWNER', 'ADMIN']), async (re
     });
 
     // --- Send Real Email Notification ---
-    const hasSmtp = !!process.env.SMTP_USER;
     const hasResend = !!process.env.RESEND_API_KEY;
 
-    if (!hasSmtp && !hasResend) {
+    if (!hasResend) {
       return res.json({ success: true, member: newMember, message: 'Team member added. (Invite email skipped, no email service configured)' });
     }
 
@@ -782,21 +768,16 @@ router.post('/:id/members', auth, authorizeMember(['OWNER', 'ADMIN']), async (re
     `;
 
     try {
-      if (hasResend) {
-        await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            from: 'ComplianceBot <onboarding@resend.dev>',
-            to: [targetUser.email],
-            subject: `Invitation: Join ${company?.companyName} on ComplianceBot`,
-            html: emailHtml
-          })
-        });
-      } else {
-        const transporter = nodemailer.createTransport({ host: process.env.SMTP_HOST, port: parseInt(process.env.SMTP_PORT || '587'), secure: process.env.SMTP_SECURE === 'true', auth: { user: process.env.SMTP_USER as string, pass: process.env.SMTP_PASS as string } });
-        await transporter.sendMail({ from: `"ComplianceBot" <${process.env.SMTP_USER || 'noreply@compliancebot.com'}>`, to: targetUser.email, subject: `Invitation: Join ${company?.companyName} on ComplianceBot`, html: emailHtml });
-      }
+      await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: 'ComplianceBot <onboarding@resend.dev>',
+          to: [targetUser.email],
+          subject: `Invitation: Join ${company?.companyName} on ComplianceBot`,
+          html: emailHtml
+        })
+      });
     } catch (emailError) {
       console.error('Email sending failed:', emailError);
     }

@@ -1,7 +1,5 @@
 import cron from 'node-cron';
 import { prisma } from '../server';
-// @ts-ignore
-import nodemailer from 'nodemailer';
 
 export const startComplianceCron = () => {
   // Run every day at 08:00 AM
@@ -17,25 +15,9 @@ export const startComplianceCron = () => {
       const prevY = currentM === 1 ? currentY - 1 : currentY;
 
       const hasResend = !!process.env.RESEND_API_KEY;
-      let transporter: any = null;
 
       if (!hasResend) {
-        // Configure Transporter
-        let smtpConfig = {
-          host: process.env.SMTP_HOST || 'smtp.ethereal.email',
-          port: parseInt(process.env.SMTP_PORT || '587'),
-          secure: process.env.SMTP_SECURE === 'true',
-          auth: {
-            user: process.env.SMTP_USER as string,
-            pass: process.env.SMTP_PASS as string,
-          },
-        };
-
-        if (!smtpConfig.auth.user) {
-          const testAccount = await nodemailer.createTestAccount();
-          smtpConfig.auth = { user: testAccount.user, pass: testAccount.pass };
-        }
-        transporter = nodemailer.createTransport(smtpConfig);
+        console.log('Skipping cron emails - RESEND_API_KEY not configured');
       }
 
       // Fetch all companies and their GST return status for the previous month
@@ -95,16 +77,6 @@ export const startComplianceCron = () => {
                 html: emailHtml
               })
             });
-          } else {
-            const info = await transporter.sendMail({
-              from: `"ComplianceBot" <${process.env.SMTP_USER || 'noreply@compliancebot.com'}>`,
-              to: member.user.email,
-              subject: `⚠️ Urgent Action Required: ${company.companyName}`,
-              html: emailHtml
-            });
-            if (!process.env.SMTP_USER) {
-              console.log(`Cron Email preview URL for ${member.user.email}: %s`, nodemailer.getTestMessageUrl(info));
-            }
           }
       }
       }

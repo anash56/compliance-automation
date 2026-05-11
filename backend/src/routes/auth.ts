@@ -6,8 +6,6 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { prisma } from '../server';
 import auth from '../middleware/auth';
-// @ts-ignore
-import nodemailer from 'nodemailer';
  // @ts-ignore
 import rateLimit from 'express-rate-limit';
 // @ts-ignore
@@ -18,7 +16,8 @@ import qrcode from 'qrcode';
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 10, // Limit each IP to 10 auth requests per window
-  message: { error: 'Too many authentication attempts, please try again in 15 minutes.' }
+  message: { error: 'Too many authentication attempts, please try again in 15 minutes.' },
+  validate: { trustProxy: false } // Suppresses the Render permissive trust proxy warning
 });
 
 const router: Router = express.Router();
@@ -92,11 +91,10 @@ router.post('/signup', authLimiter, async (req: Request, res: Response) => {
       }
     });
 
-    const hasSmtp = !!process.env.SMTP_USER;
     const hasResend = !!process.env.RESEND_API_KEY;
 
     // Send email asynchronously in the background so the request doesn't hang
-    if (hasResend || hasSmtp) {
+    if (hasResend) {
       const verifyLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login?verify=${verificationToken}`;
       const emailHtml = `
         <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
@@ -108,29 +106,18 @@ router.post('/signup', authLimiter, async (req: Request, res: Response) => {
         </div>
       `;
 
-      const sendVerificationEmail = async () => {
-        if (hasResend) {
-          const res = await fetch('https://api.resend.com/emails', {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              from: 'ComplianceBot <onboarding@resend.dev>',
-              to: [user.email],
-              subject: 'Verify your email address',
-              html: emailHtml
-            })
-          });
-          if (!res.ok) throw new Error(`Resend API error: ${await res.text()}`);
-        } else {
-          const transporter = nodemailer.createTransport({
-            host: process.env.SMTP_HOST, port: parseInt(process.env.SMTP_PORT || '587'),
-            secure: process.env.SMTP_SECURE === 'true', auth: { user: process.env.SMTP_USER as string, pass: process.env.SMTP_PASS as string }
-          });
-          await transporter.sendMail({ from: `"ComplianceBot" <${process.env.SMTP_USER}>`, to: user.email, subject: 'Verify your email address', html: emailHtml });
-        }
-      };
-
-      sendVerificationEmail().catch(async (emailErr: any) => {
+      fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: 'ComplianceBot <onboarding@resend.dev>',
+          to: [user.email],
+          subject: 'Verify your email address',
+          html: emailHtml
+        })
+      }).then(async (res) => {
+        if (!res.ok) throw new Error(`Resend API error: ${await res.text()}`);
+      }).catch(async (emailErr: any) => {
         console.error('Background email failed. Auto-verifying user to prevent lockout:', emailErr);
         await prisma.user.update({ where: { id: user.id }, data: { isEmailVerified: true } });
       });
@@ -140,7 +127,7 @@ router.post('/signup', authLimiter, async (req: Request, res: Response) => {
 
     return res.status(201).json({
       success: true,
-      message: (hasResend || hasSmtp) ? 'Account created successfully! Please check your email to verify.' : 'Account created successfully! Auto-verified for development.'
+      message: hasResend ? 'Account created successfully! Please check your email to verify.' : 'Account created successfully!'
     });
   } catch (error) {
     console.error('Signup error:', error);
@@ -463,7 +450,7 @@ router.post('/forgot-password', authLimiter, async (req: Request, res: Response)
 
     const hasResend = !!process.env.RESEND_API_KEY;
 
-    if (!process.env.SMTP_USER && !hasResend) {
+    if (!hasResend) {
       const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login?reset=${resetToken}`;
       console.log('--- FORGOT PASSWORD LINK (DEV ONLY) ---');
       console.log(resetLink);
@@ -485,30 +472,22 @@ router.post('/forgot-password', authLimiter, async (req: Request, res: Response)
     `;
 
     try {
-      if (hasResend) {
-        const res = await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            from: 'ComplianceBot Support <onboarding@resend.dev>',
-            to: [user.email],
-            subject: 'Password Reset Request',
-            html: emailHtml
-          })
-        });
-        if (!res.ok) throw new Error(`Resend API error: ${await res.text()}`);
-      } else {
-        const transporter = nodemailer.createTransport({ 
-          host: process.env.SMTP_HOST, port: parseInt(process.env.SMTP_PORT || '587'), 
-          secure: process.env.SMTP_SECURE === 'true', auth: { user: process.env.SMTP_USER as string, pass: process.env.SMTP_PASS as string },
-          connectionTimeout: 10000 
-        });
-        await transporter.sendMail({ from: `"ComplianceBot Support" <${process.env.SMTP_USER || 'noreply@compliancebot.com'}>`, to: user.email, subject: 'Password Reset Request', html: emailHtml });
-      }
+      const resendRes = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: 'ComplianceBot Support <onboarding@resend.dev>',
+          to: [user.email],
+          subject: 'Password Reset Request',
+          html: emailHtml
+        })
+      });
+      if (!resendRes.ok) throw new Error(`Resend API error: ${await resendRes.text()}`);
+      
       res.json({ success: true, message: 'If an account exists, a reset link has been sent.' });
     } catch (emailErr) {
       console.error('Forgot password email sending failed:', emailErr);
-      res.status(500).json({ error: 'Failed to send email. Please check your SMTP configuration.' });
+      res.status(500).json({ error: 'Failed to send email.' });
     }
   } catch (error) {
     console.error('Forgot password error:', error);
