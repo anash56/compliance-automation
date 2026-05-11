@@ -448,6 +448,11 @@ router.post('/forgot-password', authLimiter, async (req: Request, res: Response)
       { expiresIn: '15m' }
     );
 
+    console.log('--- SYSTEM DEBUG ---');
+    console.log('Is the key present in process.env?', 'RESEND_API_KEY' in process.env);
+    console.log('Value status:', process.env.RESEND_API_KEY ? 'It is loaded!' : 'UNDEFINED (Server cannot see it)');
+    console.log('--------------------');
+
     const hasResend = !!process.env.RESEND_API_KEY;
 
     if (!hasResend) {
