@@ -1,5 +1,6 @@
 import cron from 'node-cron';
 import { prisma } from '../server';
+import { sendEmail, isEmailConfigured } from '../services/emailService';
 
 export const startComplianceCron = () => {
   // Run every day at 08:00 AM
@@ -14,10 +15,8 @@ export const startComplianceCron = () => {
       const prevM = currentM === 1 ? 12 : currentM - 1;
       const prevY = currentM === 1 ? currentY - 1 : currentY;
 
-      const hasResend = !!process.env.RESEND_API_KEY;
-
-      if (!hasResend) {
-        console.log('Skipping cron emails - RESEND_API_KEY not configured');
+      if (!isEmailConfigured) {
+        console.log('Skipping cron emails - Email service not configured in .env');
       }
 
       // Fetch all companies and their GST return status for the previous month
@@ -66,16 +65,11 @@ export const startComplianceCron = () => {
             </div>
           `;
 
-          if (hasResend) {
-            await fetch('https://api.resend.com/emails', {
-              method: 'POST',
-              headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                from: 'ComplianceBot <onboarding@resend.dev>',
-                to: [member.user.email],
-                subject: `⚠️ Urgent Action Required: ${company.companyName}`,
-                html: emailHtml
-              })
+          if (isEmailConfigured) {
+            await sendEmail({
+              to: member.user.email,
+              subject: `⚠️ Urgent Action Required: ${company.companyName}`,
+              html: emailHtml,
             });
           }
       }

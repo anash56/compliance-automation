@@ -4,6 +4,7 @@ import express, { Router, Request, Response } from 'express';
 import { prisma } from '../server';
 import auth from '../middleware/auth';
 import { authorizeMember } from '../middleware/authorize';
+import { sendEmail, isEmailConfigured } from '../services/emailService';
 
 const router: Router = express.Router();
 const gstPattern = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]{3}$/i;
@@ -658,11 +659,9 @@ router.post('/:id/reminders', auth, authorizeMember(['OWNER', 'ADMIN', 'EDITOR',
       return res.status(404).json({ error: 'User or company not found' });
     }
 
-    const hasResend = !!process.env.RESEND_API_KEY;
-
-    if (!hasResend) {
-      console.log('Skipping email reminders - no email service configured');
-      return res.json({ success: true, message: 'Reminders generated (Email skipped, no email service configured)' });
+    if (!isEmailConfigured) {
+      console.log('Skipping email reminders - no email service configured in .env');
+      return res.json({ success: true, message: 'Reminders generated (Email skipped, no email service configured in .env)' });
     }
 
     const deadlinesHtml = deadlines.map((d: any) => `
@@ -688,17 +687,11 @@ router.post('/:id/reminders', auth, authorizeMember(['OWNER', 'ADMIN', 'EDITOR',
       </div>
     `;
 
-    await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        from: 'ComplianceBot <onboarding@resend.dev>',
-        to: [user.email],
-        subject: `📅 Upcoming Deadlines: ${company.companyName}`,
-        html: emailHtml
-      })
+    await sendEmail({
+      to: user.email,
+      subject: `📅 Upcoming Deadlines: ${company.companyName}`,
+      html: emailHtml,
     });
-
     res.json({ success: true, message: 'Reminders sent via email' });
   } catch (error) {
     console.error('Email reminders error:', error);
@@ -750,10 +743,8 @@ router.post('/:id/members', auth, authorizeMember(['OWNER', 'ADMIN']), async (re
     });
 
     // --- Send Real Email Notification ---
-    const hasResend = !!process.env.RESEND_API_KEY;
-
-    if (!hasResend) {
-      return res.json({ success: true, member: newMember, message: 'Team member added. (Invite email skipped, no email service configured)' });
+    if (!isEmailConfigured) {
+      return res.json({ success: true, member: newMember, message: 'Team member added. (Invite email skipped, no email service configured in .env)' });
     }
 
     const emailHtml = `
@@ -768,15 +759,10 @@ router.post('/:id/members', auth, authorizeMember(['OWNER', 'ADMIN']), async (re
     `;
 
     try {
-      await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          from: 'ComplianceBot <onboarding@resend.dev>',
-          to: [targetUser.email],
-          subject: `Invitation: Join ${company?.companyName} on ComplianceBot`,
-          html: emailHtml
-        })
+      await sendEmail({
+        to: targetUser.email,
+        subject: `Invitation: Join ${company?.companyName} on ComplianceBot`,
+        html: emailHtml,
       });
     } catch (emailError) {
       console.error('Email sending failed:', emailError);
