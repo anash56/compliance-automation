@@ -45,8 +45,8 @@ export default function RequireCompany({ children }: { children: React.ReactNode
     );
   }
 
-  if (!hasCompany && location.pathname !== '/dashboard') {
-    return <Navigate to="/dashboard#new" replace />;
+  if (!hasCompany && location.pathname !== '/onboarding') {
+    return <Navigate to="/onboarding" replace />;
   }
 
   return <>{children}</>;

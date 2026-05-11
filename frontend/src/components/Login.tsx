@@ -165,7 +165,7 @@ export default function Login() {
         const res = await dispatch(signup({ email, password, fullName })).unwrap();
         if (res.token) {
           setSuccessMessage('Account created successfully! Redirecting...');
-          setTimeout(() => navigate('/dashboard', { replace: true }), 1000);
+          setTimeout(() => navigate('/onboarding', { replace: true }), 1000);
         } else {
           setSuccessMessage(res.message || 'Account created! Please check your email to verify.');
           setTimeout(() => {
