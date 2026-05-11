@@ -101,42 +101,36 @@ router.post('/signup', authLimiter, async (req: Request, res: Response) => {
         host: process.env.SMTP_HOST,
         port: parseInt(process.env.SMTP_PORT || '587'),
         secure: process.env.SMTP_SECURE === 'true',
-        auth: { user: process.env.SMTP_USER as string, pass: process.env.SMTP_PASS as string },
-        connectionTimeout: 10000 // fail fast if SMTP is unreachable
+        auth: { user: process.env.SMTP_USER as string, pass: process.env.SMTP_PASS as string }
       });
       const verifyLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login?verify=${verificationToken}`;
 
-      try {
-        await transporter.sendMail({
-          from: `"ComplianceBot" <${process.env.SMTP_USER}>`,
-          to: user.email,
-          subject: 'Verify your email address',
-          html: `
-            <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
-              <h2 style="color: #2563eb;">Welcome to ComplianceBot!</h2>
-              <p>Hi ${user.fullName},</p>
-              <p>Please verify your email address by clicking the link below:</p>
-              <br/>
-              <a href="${verifyLink}" style="background-color: #2563eb; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">Verify Email</a>
-            </div>
-          `
-        });
-      } catch (emailErr) {
-        console.error('Email sending failed during signup:', emailErr);
-        // Auto-verify user locally so they don't get locked out if email fails
-        await prisma.user.update({
-          where: { id: user.id },
-          data: { isEmailVerified: true }
-        });
-      }
-
-      return res.status(201).json({
-        success: true,
-        message: 'Account created successfully! Please check your email to verify your account.'
+      // Run asynchronously, do not await to avoid hanging the request
+      transporter.sendMail({
+        from: `"ComplianceBot" <${process.env.SMTP_USER}>`,
+        to: user.email,
+        subject: 'Verify your email address',
+        html: `
+          <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
+            <h2 style="color: #2563eb;">Welcome to ComplianceBot!</h2>
+            <p>Hi ${user.fullName},</p>
+            <p>Please verify your email address by clicking the link below:</p>
+            <br/>
+            <a href="${verifyLink}" style="background-color: #2563eb; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">Verify Email</a>
+          </div>
+        `
+      }).catch(async (emailErr: any) => {
+        console.error('Email sending failed during signup, falling back to auto-verify:', emailErr);
+        try {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { isEmailVerified: true }
+          });
+        } catch (e) {}
       });
     }
 
-    // Auto-login if no SMTP is configured
+    // Always Auto-login immediately regardless of SMTP configuration
     const token = jwt.sign({ userId: user.id }, getJwtSecret(), { expiresIn: '15m' });
     const refreshToken = jwt.sign({ userId: user.id, type: 'refresh' }, getJwtSecret(), { expiresIn: '1d' });
 
@@ -154,9 +148,9 @@ router.post('/signup', authLimiter, async (req: Request, res: Response) => {
       maxAge: 24 * 60 * 60 * 1000 // 1 day
     });
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
-      message: 'Account created successfully!',
+      message: hasSmtp ? 'Account created successfully! A verification email has been sent.' : 'Account created successfully!',
       token,
       user: {
         id: user.id,
