@@ -25,7 +25,8 @@ const router: Router = express.Router();
 
 const getJwtSecret = () => {
   if (!process.env.JWT_SECRET) {
-    throw new Error('JWT_SECRET is not configured');
+    console.warn('WARNING: JWT_SECRET is not configured in .env. Using fallback secret for development.');
+    return 'fallback_development_secret_only_replace_in_production';
   }
 
   return process.env.JWT_SECRET;
@@ -145,10 +146,6 @@ router.post('/login', authLimiter, async (req: Request, res: Response) => {
     if (!user) {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
-
-    // if (!user.isEmailVerified) {
-    //   return res.status(403).json({ error: 'Please verify your email address before logging in.' });
-    // }
 
     if (!user.password) {
       return res.status(401).json({ error: 'Please use the Google or GitHub login option for this account.' });

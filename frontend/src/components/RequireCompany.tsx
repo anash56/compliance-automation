@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import api from '../services/api';
 import { AppDispatch, RootState } from '../store';
@@ -10,6 +10,7 @@ export default function RequireCompany({ children }: { children: React.ReactNode
   const { companies } = useSelector((state: RootState) => state.company);
   const [loading, setLoading] = useState(companies.length === 0);
   const [hasCompany, setHasCompany] = useState(companies.length > 0);
+  const location = useLocation();
 
   useEffect(() => {
     if (companies.length > 0) {
@@ -44,7 +45,7 @@ export default function RequireCompany({ children }: { children: React.ReactNode
     );
   }
 
-  if (!hasCompany) {
+  if (!hasCompany && location.pathname !== '/dashboard') {
     return <Navigate to="/dashboard#new" replace />;
   }
 
