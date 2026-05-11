@@ -455,7 +455,7 @@ router.post('/forgot-password', authLimiter, async (req: Request, res: Response)
       console.log('--- FORGOT PASSWORD LINK (DEV ONLY) ---');
       console.log(resetLink);
       console.log('---------------------------------------');
-      return res.json({ success: true, message: 'Email service not configured. Link printed to server console.' });
+      return res.json({ success: true, message: 'If an account exists, a reset link has been sent.' });
     }
 
     const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login?reset=${resetToken}`;
