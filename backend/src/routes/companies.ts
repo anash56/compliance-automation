@@ -660,12 +660,13 @@ router.post('/:id/reminders', auth, authorizeMember(['OWNER', 'ADMIN', 'EDITOR',
       return res.status(404).json({ error: 'User or company not found' });
     }
 
-    if (!process.env.SMTP_USER) {
-      console.log('Skipping email reminders - no SMTP configured');
-      return res.json({ success: true, message: 'Reminders generated (Email skipped, SMTP not configured)' });
-    }
+    const hasSmtp = !!process.env.SMTP_USER;
+    const hasResend = !!process.env.RESEND_API_KEY;
 
-    const transporter = nodemailer.createTransport({ host: process.env.SMTP_HOST, port: parseInt(process.env.SMTP_PORT || '587'), secure: process.env.SMTP_SECURE === 'true', auth: { user: process.env.SMTP_USER as string, pass: process.env.SMTP_PASS as string } });
+    if (!hasSmtp && !hasResend) {
+      console.log('Skipping email reminders - no email service configured');
+      return res.json({ success: true, message: 'Reminders generated (Email skipped, no email service configured)' });
+    }
 
     const deadlinesHtml = deadlines.map((d: any) => `
       <li style="margin-bottom: 12px; padding: 10px; background-color: #f9fafb; border-left: 4px solid ${d.color === 'red' ? '#ef4444' : d.color === 'orange' ? '#f97316' : '#eab308'}; border-radius: 4px;">
@@ -675,25 +676,41 @@ router.post('/:id/reminders', auth, authorizeMember(['OWNER', 'ADMIN', 'EDITOR',
       </li>
     `).join('');
 
-    const info = await transporter.sendMail({
-      from: `"ComplianceBot" <${process.env.SMTP_USER || 'noreply@compliancebot.com'}>`,
-      to: user.email,
-      subject: `📅 Upcoming Deadlines: ${company.companyName}`,
-      html: `
-        <div style="font-family: Arial, sans-serif; max-w: 600px; margin: 0 auto; padding: 20px; color: #1f2937;">
-          <h2 style="color: #2563eb; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">Compliance Deadlines</h2>
-          <p>Hello <strong>${user.fullName}</strong>,</p>
-          <p>Here is your requested compliance schedule for <strong>${company.companyName}</strong>:</p>
-          <ul style="list-style-type: none; padding: 0;">
-            ${deadlinesHtml}
-          </ul>
-          <br/>
-          <p>Please ensure these are filed on time to avoid late fees and penalties.</p>
-          <br/>
-          <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/dashboard" style="display: inline-block; background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Go to Dashboard</a>
-        </div>
-      `
-    });
+    const emailHtml = `
+      <div style="font-family: Arial, sans-serif; max-w: 600px; margin: 0 auto; padding: 20px; color: #1f2937;">
+        <h2 style="color: #2563eb; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">Compliance Deadlines</h2>
+        <p>Hello <strong>${user.fullName}</strong>,</p>
+        <p>Here is your requested compliance schedule for <strong>${company.companyName}</strong>:</p>
+        <ul style="list-style-type: none; padding: 0;">
+          ${deadlinesHtml}
+        </ul>
+        <br/>
+        <p>Please ensure these are filed on time to avoid late fees and penalties.</p>
+        <br/>
+        <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/dashboard" style="display: inline-block; background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Go to Dashboard</a>
+      </div>
+    `;
+
+    if (hasResend) {
+      await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: 'ComplianceBot <onboarding@resend.dev>',
+          to: [user.email],
+          subject: `📅 Upcoming Deadlines: ${company.companyName}`,
+          html: emailHtml
+        })
+      });
+    } else {
+      const transporter = nodemailer.createTransport({ host: process.env.SMTP_HOST, port: parseInt(process.env.SMTP_PORT || '587'), secure: process.env.SMTP_SECURE === 'true', auth: { user: process.env.SMTP_USER as string, pass: process.env.SMTP_PASS as string } });
+      await transporter.sendMail({
+        from: `"ComplianceBot" <${process.env.SMTP_USER || 'noreply@compliancebot.com'}>`,
+        to: user.email,
+        subject: `📅 Upcoming Deadlines: ${company.companyName}`,
+        html: emailHtml
+      });
+    }
 
     res.json({ success: true, message: 'Reminders sent via email' });
   } catch (error) {
@@ -746,30 +763,42 @@ router.post('/:id/members', auth, authorizeMember(['OWNER', 'ADMIN']), async (re
     });
 
     // --- Send Real Email Notification ---
-    if (!process.env.SMTP_USER) {
-      return res.json({ success: true, member: newMember, message: 'Team member added. (Invite email skipped, SMTP not configured)' });
+    const hasSmtp = !!process.env.SMTP_USER;
+    const hasResend = !!process.env.RESEND_API_KEY;
+
+    if (!hasSmtp && !hasResend) {
+      return res.json({ success: true, member: newMember, message: 'Team member added. (Invite email skipped, no email service configured)' });
     }
 
-    const transporter = nodemailer.createTransport({ host: process.env.SMTP_HOST, port: parseInt(process.env.SMTP_PORT || '587'), secure: process.env.SMTP_SECURE === 'true', auth: { user: process.env.SMTP_USER as string, pass: process.env.SMTP_PASS as string } });
+    const emailHtml = `
+      <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
+        <h2 style="color: #2563eb;">Welcome to the Team!</h2>
+        <p>Hello <strong>${targetUser.fullName}</strong>,</p>
+        <p>You have been invited to join the workspace <strong>${company?.companyName}</strong> on ComplianceBot with the role of <strong>${role || 'VIEWER'}</strong>.</p>
+        <p>You can now collaborate on GST filings, TDS payments, and compliance reports.</p>
+        <br/>
+        <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/dashboard" style="background-color: #2563eb; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">Go to Dashboard</a>
+      </div>
+    `;
 
     try {
-      const info = await transporter.sendMail({
-        from: `"ComplianceBot" <${process.env.SMTP_USER || 'noreply@compliancebot.com'}>`,
-        to: targetUser.email,
-        subject: `Invitation: Join ${company?.companyName} on ComplianceBot`,
-        html: `
-          <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
-            <h2 style="color: #2563eb;">Welcome to the Team!</h2>
-            <p>Hello <strong>${targetUser.fullName}</strong>,</p>
-            <p>You have been invited to join the workspace <strong>${company?.companyName}</strong> on ComplianceBot with the role of <strong>${role || 'VIEWER'}</strong>.</p>
-            <p>You can now collaborate on GST filings, TDS payments, and compliance reports.</p>
-            <br/>
-            <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/dashboard" style="background-color: #2563eb; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">Go to Dashboard</a>
-          </div>
-        `
-      });
+      if (hasResend) {
+        await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            from: 'ComplianceBot <onboarding@resend.dev>',
+            to: [targetUser.email],
+            subject: `Invitation: Join ${company?.companyName} on ComplianceBot`,
+            html: emailHtml
+          })
+        });
+      } else {
+        const transporter = nodemailer.createTransport({ host: process.env.SMTP_HOST, port: parseInt(process.env.SMTP_PORT || '587'), secure: process.env.SMTP_SECURE === 'true', auth: { user: process.env.SMTP_USER as string, pass: process.env.SMTP_PASS as string } });
+        await transporter.sendMail({ from: `"ComplianceBot" <${process.env.SMTP_USER || 'noreply@compliancebot.com'}>`, to: targetUser.email, subject: `Invitation: Join ${company?.companyName} on ComplianceBot`, html: emailHtml });
+      }
     } catch (emailError) {
-      console.error('Email sending failed (Check SMTP settings in .env):', emailError);
+      console.error('Email sending failed:', emailError);
     }
 
     res.json({ success: true, member: newMember, message: 'Team member added and email sent.' });

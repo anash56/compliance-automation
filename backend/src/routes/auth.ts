@@ -93,43 +93,54 @@ router.post('/signup', authLimiter, async (req: Request, res: Response) => {
     });
 
     const hasSmtp = !!process.env.SMTP_USER;
+    const hasResend = !!process.env.RESEND_API_KEY;
 
     // Send email asynchronously in the background so the request doesn't hang
-    if (hasSmtp) {
-      const transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: parseInt(process.env.SMTP_PORT || '587'),
-        secure: process.env.SMTP_SECURE === 'true',
-        auth: { user: process.env.SMTP_USER as string, pass: process.env.SMTP_PASS as string }
-      });
+    if (hasResend || hasSmtp) {
       const verifyLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login?verify=${verificationToken}`;
+      const emailHtml = `
+        <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
+          <h2 style="color: #2563eb;">Welcome to ComplianceBot!</h2>
+          <p>Hi ${user.fullName},</p>
+          <p>Please verify your email address by clicking the link below:</p>
+          <br/>
+          <a href="${verifyLink}" style="background-color: #2563eb; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">Verify Email</a>
+        </div>
+      `;
 
-      transporter.sendMail({
-        from: `"ComplianceBot" <${process.env.SMTP_USER}>`,
-        to: user.email,
-        subject: 'Verify your email address',
-        html: `
-          <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
-            <h2 style="color: #2563eb;">Welcome to ComplianceBot!</h2>
-            <p>Hi ${user.fullName},</p>
-            <p>Please verify your email address by clicking the link below:</p>
-            <br/>
-            <a href="${verifyLink}" style="background-color: #2563eb; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">Verify Email</a>
-          </div>
-        `
-      }).catch(async (emailErr: any) => {
+      const sendVerificationEmail = async () => {
+        if (hasResend) {
+          const res = await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              from: 'ComplianceBot <onboarding@resend.dev>',
+              to: [user.email],
+              subject: 'Verify your email address',
+              html: emailHtml
+            })
+          });
+          if (!res.ok) throw new Error(`Resend API error: ${await res.text()}`);
+        } else {
+          const transporter = nodemailer.createTransport({
+            host: process.env.SMTP_HOST, port: parseInt(process.env.SMTP_PORT || '587'),
+            secure: process.env.SMTP_SECURE === 'true', auth: { user: process.env.SMTP_USER as string, pass: process.env.SMTP_PASS as string }
+          });
+          await transporter.sendMail({ from: `"ComplianceBot" <${process.env.SMTP_USER}>`, to: user.email, subject: 'Verify your email address', html: emailHtml });
+        }
+      };
+
+      sendVerificationEmail().catch(async (emailErr: any) => {
         console.error('Background email failed. Auto-verifying user to prevent lockout:', emailErr);
-        // Failsafe: Automatically verify the user in the DB if SMTP fails
         await prisma.user.update({ where: { id: user.id }, data: { isEmailVerified: true } });
       });
     } else {
-      // Auto verify if no SMTP setup at all
       await prisma.user.update({ where: { id: user.id }, data: { isEmailVerified: true } });
     }
 
     return res.status(201).json({
       success: true,
-      message: hasSmtp ? 'Account created successfully! Please check your email to verify.' : 'Account created successfully! Auto-verified for development.'
+      message: (hasResend || hasSmtp) ? 'Account created successfully! Please check your email to verify.' : 'Account created successfully! Auto-verified for development.'
     });
   } catch (error) {
     console.error('Signup error:', error);
@@ -450,40 +461,50 @@ router.post('/forgot-password', authLimiter, async (req: Request, res: Response)
       { expiresIn: '15m' }
     );
 
-    if (!process.env.SMTP_USER) {
+    const hasResend = !!process.env.RESEND_API_KEY;
+
+    if (!process.env.SMTP_USER && !hasResend) {
       const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login?reset=${resetToken}`;
       console.log('--- FORGOT PASSWORD LINK (DEV ONLY) ---');
       console.log(resetLink);
       console.log('---------------------------------------');
-      return res.json({ success: true, message: 'SMTP not configured. Link printed to server console.' });
+      return res.json({ success: true, message: 'Email service not configured. Link printed to server console.' });
     }
 
-    const transporter = nodemailer.createTransport({ 
-      host: process.env.SMTP_HOST, 
-      port: parseInt(process.env.SMTP_PORT || '587'), 
-      secure: process.env.SMTP_SECURE === 'true', 
-      auth: { user: process.env.SMTP_USER as string, pass: process.env.SMTP_PASS as string },
-      connectionTimeout: 10000 
-    });
     const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login?reset=${resetToken}`;
+    const emailHtml = `
+      <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
+        <h2 style="color: #2563eb;">Password Reset Request</h2>
+        <p>Hello <strong>${user.fullName}</strong>,</p>
+        <p>We received a request to reset your password. This secure link is valid for 15 minutes.</p>
+        <br/>
+        <a href="${resetLink}" style="background-color: #2563eb; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">Reset Password</a>
+        <br/><br/>
+        <p>If you did not request this, please ignore this email.</p>
+      </div>
+    `;
 
     try {
-      await transporter.sendMail({
-        from: `"ComplianceBot Support" <${process.env.SMTP_USER || 'noreply@compliancebot.com'}>`,
-        to: user.email,
-        subject: 'Password Reset Request',
-        html: `
-          <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
-            <h2 style="color: #2563eb;">Password Reset Request</h2>
-            <p>Hello <strong>${user.fullName}</strong>,</p>
-            <p>We received a request to reset your password. This secure link is valid for 15 minutes.</p>
-            <br/>
-            <a href="${resetLink}" style="background-color: #2563eb; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">Reset Password</a>
-            <br/><br/>
-            <p>If you did not request this, please ignore this email.</p>
-          </div>
-        `
-      });
+      if (hasResend) {
+        const res = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            from: 'ComplianceBot Support <onboarding@resend.dev>',
+            to: [user.email],
+            subject: 'Password Reset Request',
+            html: emailHtml
+          })
+        });
+        if (!res.ok) throw new Error(`Resend API error: ${await res.text()}`);
+      } else {
+        const transporter = nodemailer.createTransport({ 
+          host: process.env.SMTP_HOST, port: parseInt(process.env.SMTP_PORT || '587'), 
+          secure: process.env.SMTP_SECURE === 'true', auth: { user: process.env.SMTP_USER as string, pass: process.env.SMTP_PASS as string },
+          connectionTimeout: 10000 
+        });
+        await transporter.sendMail({ from: `"ComplianceBot Support" <${process.env.SMTP_USER || 'noreply@compliancebot.com'}>`, to: user.email, subject: 'Password Reset Request', html: emailHtml });
+      }
       res.json({ success: true, message: 'If an account exists, a reset link has been sent.' });
     } catch (emailErr) {
       console.error('Forgot password email sending failed:', emailErr);

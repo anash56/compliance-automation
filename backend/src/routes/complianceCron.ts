@@ -16,22 +16,27 @@ export const startComplianceCron = () => {
       const prevM = currentM === 1 ? 12 : currentM - 1;
       const prevY = currentM === 1 ? currentY - 1 : currentY;
 
-      // Configure Transporter
-      let smtpConfig = {
-        host: process.env.SMTP_HOST || 'smtp.ethereal.email',
-        port: parseInt(process.env.SMTP_PORT || '587'),
-        secure: process.env.SMTP_SECURE === 'true',
-        auth: {
-          user: process.env.SMTP_USER as string,
-          pass: process.env.SMTP_PASS as string,
-        },
-      };
+      const hasResend = !!process.env.RESEND_API_KEY;
+      let transporter: any = null;
 
-      if (!smtpConfig.auth.user) {
-        const testAccount = await nodemailer.createTestAccount();
-        smtpConfig.auth = { user: testAccount.user, pass: testAccount.pass };
+      if (!hasResend) {
+        // Configure Transporter
+        let smtpConfig = {
+          host: process.env.SMTP_HOST || 'smtp.ethereal.email',
+          port: parseInt(process.env.SMTP_PORT || '587'),
+          secure: process.env.SMTP_SECURE === 'true',
+          auth: {
+            user: process.env.SMTP_USER as string,
+            pass: process.env.SMTP_PASS as string,
+          },
+        };
+
+        if (!smtpConfig.auth.user) {
+          const testAccount = await nodemailer.createTestAccount();
+          smtpConfig.auth = { user: testAccount.user, pass: testAccount.pass };
+        }
+        transporter = nodemailer.createTransport(smtpConfig);
       }
-      const transporter = nodemailer.createTransport(smtpConfig);
 
       // Fetch all companies and their GST return status for the previous month
       const companies = await prisma.company.findMany({
@@ -66,11 +71,7 @@ export const startComplianceCron = () => {
         `).join('');
 
         for (const member of company.members) {
-        const info = await transporter.sendMail({
-          from: `"ComplianceBot" <${process.env.SMTP_USER || 'noreply@compliancebot.com'}>`,
-          to: member.user.email,
-            subject: `⚠️ Urgent Action Required: ${company.companyName}`,
-          html: `
+          const emailHtml = `
             <div style="font-family: Arial, sans-serif; max-w: 600px; margin: 0 auto; padding: 20px; color: #1f2937;">
               <h2 style="color: #dc2626; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">Action Required</h2>
               <p>Hello <strong>${member.user.fullName}</strong>,</p>
@@ -81,12 +82,30 @@ export const startComplianceCron = () => {
               <br/>
               <p>Please ensure these are filed on time to avoid late fees and penalties.</p>
             </div>
-          `
-        });
+          `;
 
-        if (!process.env.SMTP_USER) {
-          console.log(`Cron Email preview URL for ${member.user.email}: %s`, nodemailer.getTestMessageUrl(info));
-        }
+          if (hasResend) {
+            await fetch('https://api.resend.com/emails', {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                from: 'ComplianceBot <onboarding@resend.dev>',
+                to: [member.user.email],
+                subject: `⚠️ Urgent Action Required: ${company.companyName}`,
+                html: emailHtml
+              })
+            });
+          } else {
+            const info = await transporter.sendMail({
+              from: `"ComplianceBot" <${process.env.SMTP_USER || 'noreply@compliancebot.com'}>`,
+              to: member.user.email,
+              subject: `⚠️ Urgent Action Required: ${company.companyName}`,
+              html: emailHtml
+            });
+            if (!process.env.SMTP_USER) {
+              console.log(`Cron Email preview URL for ${member.user.email}: %s`, nodemailer.getTestMessageUrl(info));
+            }
+          }
       }
       }
     } catch (error) {
