@@ -61,13 +61,6 @@ app.use('/api/invoices', invoiceRoutes);
 app.use('/api/gst', gstRoutes);
 app.use('/api/tds', tdsRoutes);
 
-// Fallback routes (Handles cases where the frontend URL is missing the '/api' suffix)
-app.use('/auth', authRoutes);
-app.use('/companies', companyRoutes);
-app.use('/invoices', invoiceRoutes);
-app.use('/gst', gstRoutes);
-app.use('/tds', tdsRoutes);
-
 // 404 handler
 app.use((req: Request, res: Response) => {
   res.status(404).json({ error: 'Route not found' });
