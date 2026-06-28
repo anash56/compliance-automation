@@ -59,11 +59,9 @@ To run this project, you will need to add the following environment variables to
 | `NODE_ENV` | `development` or `production` |
 | `FRONTEND_URL` | `http://localhost:5173` (or your live Vercel URL) |
 | `JWT_SECRET` | A secure random 64-character string |
-| `SMTP_HOST` | e.g., `smtp.gmail.com` |
-| `SMTP_PORT` | e.g., `587` |
-| `SMTP_SECURE` | `false` (for TLS) |
-| `SMTP_USER` | Your email address |
-| `SMTP_PASS` | Your App Password |
+| `SENDPULSE_API_ID` | Your SendPulse API ID |
+| `SENDPULSE_API_SECRET` | Your SendPulse API Secret |
+| `EMAIL_FROM_ADDRESS` | The verified "From" email address in SendPulse |
 | `GOOGLE_CLIENT_ID` | OAuth Client ID from Google Cloud Console |
 | `GOOGLE_CLIENT_SECRET` | OAuth Client Secret from Google |
 | `GITHUB_CLIENT_ID` | OAuth Client ID from GitHub |
