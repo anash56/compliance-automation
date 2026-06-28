@@ -45,10 +45,11 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    const isPublicPage = window.location.pathname === '/login' || window.location.pathname === '/signup';
-    const isPublicApiCall = ['/auth/refresh', '/auth/forgot-password', '/auth/reset-password'].includes(originalRequest.url);
+    // Only attempt to refresh for non-auth routes.
+    // Public routes like /forgot-password should be ignored by this interceptor.
+    const isAuthApiCall = originalRequest.url.startsWith('/auth/'); 
 
-    if (error.response?.status === 401 && !originalRequest._retry && !isPublicPage && !isPublicApiCall) {
+    if (error.response?.status === 401 && !originalRequest._retry && !isAuthApiCall) {
       if (isRefreshing) {
         return new Promise(function(resolve, reject) {
           failedQueue.push({ resolve, reject });
@@ -59,12 +60,16 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        await axios.post(`${API_URL}/auth/refresh`, {}, { withCredentials: true });
+        await api.post('/auth/refresh'); // Use the configured api instance
         isRefreshing = false;
         processQueue(null);
         return api(originalRequest);
       } catch (err) {
         isRefreshing = false;
+        // Clear cookies and redirect
+        document.cookie = "token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+        document.cookie = "refreshToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+
         processQueue(err);
         window.location.href = '/login';
         return Promise.reject(err);
