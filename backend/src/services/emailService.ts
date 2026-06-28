@@ -61,6 +61,8 @@ export const sendEmail = async (options: EmailOptions): Promise<void> => {
     console.log('--- DEV EMAIL (Not Sent) ---');
     console.log(`To: ${options.to}\nSubject: ${options.subject}\n---`);
     return;
+    console.error('❌ Email not sent because getting a SendPulse token failed.');
+    throw new Error('Could not get email service token. Please check API credentials.');
   }
 
   const emailPayload = {
