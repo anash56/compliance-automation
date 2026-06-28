@@ -31,7 +31,11 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    if (error.response?.status === 401 && !originalRequest._retry && window.location.pathname !== '/login' && window.location.pathname !== '/signup' && originalRequest.url !== '/auth/refresh') {
+    const isAuthRoute = window.location.pathname === '/login' || window.location.pathname === '/signup';
+    const isAuthApiCall = originalRequest.url === '/auth/refresh' || originalRequest.url === '/auth/forgot-password';
+
+
+    if (error.response?.status === 401 && !originalRequest._retry && !isAuthRoute && !isAuthApiCall) {
       if (isRefreshing) {
         return new Promise(function(resolve, reject) {
           failedQueue.push({ resolve, reject });

@@ -469,8 +469,8 @@ router.post('/forgot-password', authLimiter, async (req: Request, res: Response)
       
       res.json({ success: true, message: 'If an account exists, a reset link has been sent.' });
     } catch (emailErr) {
-      console.error('Forgot password email sending failed:', emailErr);
-      res.status(500).json({ error: 'Failed to send email.' });
+      console.error('Forgot password email sending failed:', emailErr instanceof Error ? emailErr.message : emailErr);
+      res.status(500).json({ error: `Failed to send email. ${emailErr instanceof Error ? emailErr.message : ''}` });
     }
   } catch (error) {
     console.error('Forgot password error:', error);
