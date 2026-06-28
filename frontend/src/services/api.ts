@@ -11,6 +11,20 @@ export const api = axios.create({
   }
 });
 
+// Add a request interceptor to include the token
+api.interceptors.request.use(
+  (config) => {
+    // This is a placeholder as we are using httpOnly cookies.
+    // If you were using localStorage, you would get the token here.
+    // const token = localStorage.getItem('token');
+    // if (token) {
+    //   config.headers['Authorization'] = `Bearer ${token}`;
+    // }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
 let isRefreshing = false;
 let failedQueue: any[] = [];
 
@@ -31,11 +45,10 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    const isAuthRoute = window.location.pathname === '/login' || window.location.pathname === '/signup';
-    const isAuthApiCall = originalRequest.url === '/auth/refresh' || originalRequest.url === '/auth/forgot-password';
+    const isPublicPage = window.location.pathname === '/login' || window.location.pathname === '/signup';
+    const isPublicApiCall = ['/auth/refresh', '/auth/forgot-password', '/auth/reset-password'].includes(originalRequest.url);
 
-
-    if (error.response?.status === 401 && !originalRequest._retry && !isAuthRoute && !isAuthApiCall) {
+    if (error.response?.status === 401 && !originalRequest._retry && !isPublicPage && !isPublicApiCall) {
       if (isRefreshing) {
         return new Promise(function(resolve, reject) {
           failedQueue.push({ resolve, reject });
