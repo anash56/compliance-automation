@@ -47,7 +47,7 @@ api.interceptors.response.use(
 
     // Only attempt to refresh for non-auth routes.
     // Public routes like /forgot-password should be ignored by this interceptor.
-    const isAuthApiCall = originalRequest.url.startsWith('/auth/'); 
+    const isAuthApiCall = originalRequest.url && originalRequest.url.includes('/auth/'); 
 
     if (error.response?.status === 401 && !originalRequest._retry && !isAuthApiCall) {
       if (isRefreshing) {
