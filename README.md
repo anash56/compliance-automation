@@ -59,9 +59,8 @@ To run this project, you will need to add the following environment variables to
 | `NODE_ENV` | `development` or `production` |
 | `FRONTEND_URL` | `http://localhost:5173` (or your live Vercel URL) |
 | `JWT_SECRET` | A secure random 64-character string |
-| `SENDPULSE_API_ID` | Your SendPulse API ID |
-| `SENDPULSE_API_SECRET` | Your SendPulse API Secret |
-| `EMAIL_FROM_ADDRESS` | The verified "From" email address in SendPulse |
+| `BREVO_API_KEY` | Your Brevo (Sendinblue) v3 API Key |
+| `EMAIL_FROM_ADDRESS` | The verified "From" email address in your Brevo account |
 | `GOOGLE_CLIENT_ID` | OAuth Client ID from Google Cloud Console |
 | `GOOGLE_CLIENT_SECRET` | OAuth Client Secret from Google |
 | `GITHUB_CLIENT_ID` | OAuth Client ID from GitHub |
