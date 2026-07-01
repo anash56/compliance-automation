@@ -1,8 +1,10 @@
 // src/server.ts
 
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express, { Express, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import { PrismaClient } from '@prisma/client';
 // @ts-ignore
 import cookieParser from 'cookie-parser';
@@ -14,8 +16,6 @@ import gstRoutes from './routes/gst';
 import tdsRoutes from './routes/tds';
 import companyRoutes from './routes/companies';
 import { startComplianceCron } from './routes/complianceCron';
-
-dotenv.config();
 
 const app: Express = express();
 const PORT = process.env.PORT || 5000;
