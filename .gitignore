@@ -16,3 +16,5 @@ yarn-error.log*
 frontend/node_modules/.vite/
 frontend/dist/
 backend/dist/
+
+.vscode/
