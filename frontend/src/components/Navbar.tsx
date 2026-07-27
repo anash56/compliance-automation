@@ -90,8 +90,10 @@ const handleDisable2FA = async () => {
 };
 
 const handleLogout = async () => {
-await dispatch(logout());
-navigate('/login');
+  if (window.confirm("Are you sure you want to log out of ComplianceBot?")) {
+    await dispatch(logout());
+    navigate('/login');
+  }
 };
 return (
 <nav className="bg-white shadow-md border-b border-gray-200">
