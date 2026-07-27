@@ -91,7 +91,7 @@ const authSlice = createSlice({
   name: 'auth',
   initialState: {
     user: null as User | null,
-    loading: false,
+    loading: typeof window !== 'undefined' ? Boolean(localStorage.getItem('token')) : false,
     error: null as string | null,
     require2FA: false,
     tempToken: null as string | null
@@ -129,6 +129,9 @@ const authSlice = createSlice({
           state.user = action.payload.user;
           state.require2FA = false;
           state.tempToken = null;
+          if (action.payload.token) {
+            localStorage.setItem('token', action.payload.token);
+          }
         }
       })
       .addCase(login.rejected, (state, action) => {
@@ -149,6 +152,9 @@ const authSlice = createSlice({
           state.user = action.payload.user;
           state.require2FA = false;
           state.tempToken = null;
+          if (action.payload.token) {
+            localStorage.setItem('token', action.payload.token);
+          }
         }
       })
       .addCase(socialLogin.rejected, (state, action) => {
@@ -161,6 +167,9 @@ const authSlice = createSlice({
         state.user = action.payload.user;
         state.require2FA = false;
         state.tempToken = null;
+        if (action.payload.token) {
+          localStorage.setItem('token', action.payload.token);
+        }
       })
       .addCase(verify2FA.rejected, (state, action) => {
         state.loading = false;
@@ -177,12 +186,15 @@ const authSlice = createSlice({
       .addCase(fetchCurrentUser.rejected, (state) => {
         state.loading = false;
         state.user = null;
+        localStorage.removeItem('token');
         localStorage.removeItem('selectedCompanyId');
       })
       .addCase(logout.fulfilled, (state) => {
         state.user = null;
         state.require2FA = false;
         state.tempToken = null;
+        localStorage.removeItem('token');
+        localStorage.removeItem('selectedCompanyId');
       });
   }
 });

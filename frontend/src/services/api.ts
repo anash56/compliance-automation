@@ -11,15 +11,13 @@ export const api = axios.create({
   }
 });
 
-// Add a request interceptor to include the token
+// Add a request interceptor to include the token from localStorage
 api.interceptors.request.use(
   (config) => {
-    // This is a placeholder as we are using httpOnly cookies.
-    // If you were using localStorage, you would get the token here.
-    // const token = localStorage.getItem('token');
-    // if (token) {
-    //   config.headers['Authorization'] = `Bearer ${token}`;
-    // }
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers['Authorization'] = `Bearer ${token}`;
+    }
     return config;
   },
   (error) => Promise.reject(error)
@@ -45,11 +43,17 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    // Only attempt to refresh for non-auth routes.
-    // Public routes like /forgot-password should be ignored by this interceptor.
-    const isAuthApiCall = originalRequest.url && originalRequest.url.includes('/auth/'); 
+    // Exclude public auth endpoints from trigger-refresh attempts
+    const isPublicAuthApiCall = originalRequest.url && (
+      originalRequest.url.includes('/auth/login') ||
+      originalRequest.url.includes('/auth/signup') ||
+      originalRequest.url.includes('/auth/refresh') ||
+      originalRequest.url.includes('/auth/verify-2fa') ||
+      originalRequest.url.includes('/auth/forgot-password') ||
+      originalRequest.url.includes('/auth/reset-password')
+    );
 
-    if (error.response?.status === 401 && !originalRequest._retry && !isAuthApiCall) {
+    if (error.response?.status === 401 && !originalRequest._retry && !isPublicAuthApiCall) {
       if (isRefreshing) {
         return new Promise(function(resolve, reject) {
           failedQueue.push({ resolve, reject });
@@ -60,18 +64,20 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        await api.post('/auth/refresh'); // Use the configured api instance
+        const refreshRes = await api.post('/auth/refresh');
+        if (refreshRes.data?.token) {
+          localStorage.setItem('token', refreshRes.data.token);
+        }
         isRefreshing = false;
         processQueue(null);
         return api(originalRequest);
       } catch (err) {
         isRefreshing = false;
-        // Clear cookies and redirect
+        localStorage.removeItem('token');
         document.cookie = "token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
         document.cookie = "refreshToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
 
         processQueue(err);
-        window.location.href = '/login';
         return Promise.reject(err);
       }
     }
