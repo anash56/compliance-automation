@@ -40,10 +40,10 @@ export default function Dashboard({ company, year }: DashboardProps) {
     }
   }, [company?.id, year]);
 
-  const fetchDashboardStats = async () => {
+  const fetchDashboardStats = async (isSilent = false) => {
     if (!company) return;
 
-    setLoading(true);
+    if (!isSilent) setLoading(true);
     try {
       const response = await api.get(`/companies/${company.id}/dashboard`, {
         params: { year }
@@ -54,16 +54,25 @@ export default function Dashboard({ company, year }: DashboardProps) {
     } catch (error) {
       console.error('Failed to fetch dashboard stats:', error);
     } finally {
-      setLoading(false);
+      if (!isSilent) setLoading(false);
     }
   };
 
   const handleUpdateTaskStatus = async (taskId: string, newStatus: string) => {
+    // Optimistically update status locally for instant smooth UI response
+    setStats(prev => ({
+      ...prev,
+      upcomingDeadlines: prev.upcomingDeadlines.map(task => 
+        task.id === taskId ? { ...task, status: newStatus } : task
+      )
+    }));
+
     try {
       await api.put(`/companies/${company?.id}/tasks/${taskId}/status`, { status: newStatus });
-      fetchDashboardStats();
+      fetchDashboardStats(true); // Silent background refresh
     } catch (error) {
       console.error('Failed to update task status:', error);
+      fetchDashboardStats(true);
     }
   };
 
