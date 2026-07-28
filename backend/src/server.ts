@@ -3,11 +3,13 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
-import express, { Express, Request, Response, NextFunction } from 'express';
+import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
 import { PrismaClient } from '@prisma/client';
+
 // @ts-ignore
 import cookieParser from 'cookie-parser';
+import { errorHandler } from './middleware/errorHandler';
 
 // Import routes
 import authRoutes from './routes/auth';
@@ -37,7 +39,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
 // Health check
-app.get('/api/health', async (req: Request, res: Response) => {
+app.get('/api/health', async (_req: Request, res: Response) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
     res.json({ 
@@ -62,18 +64,12 @@ app.use('/api/gst', gstRoutes);
 app.use('/api/tds', tdsRoutes);
 
 // 404 handler
-app.use((req: Request, res: Response) => {
+app.use((_req: Request, res: Response) => {
   res.status(404).json({ error: 'Route not found' });
 });
 
-// Error handler
-app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
-  console.error('Error:', err);
-  res.status(500).json({ 
-    error: 'Server error',
-    message: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error'
-  });
-});
+// Global Error handler middleware (Decoupled from server.ts)
+app.use(errorHandler);
 
 // Start Background Jobs
 startComplianceCron();

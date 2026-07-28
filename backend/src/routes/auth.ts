@@ -1,9 +1,8 @@
 // src/routes/auth.ts
 
 import express, { Router } from 'express';
-// @ts-ignore
-import rateLimit from 'express-rate-limit';
 import auth from '../middleware/auth';
+import { authLimiter } from '../middleware/rateLimiter';
 import {
   signup,
   login,
@@ -24,15 +23,9 @@ import {
   deleteAccount
 } from '../controllers/authController';
 
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  message: { error: 'Too many authentication attempts, please try again in 15 minutes.' }
-});
-
 const router: Router = express.Router();
 
-// Public Authentication Endpoints
+// Public Authentication Endpoints (Rate limited)
 router.post('/signup', authLimiter, signup);
 router.post('/login', authLimiter, login);
 router.post('/verify-2fa', authLimiter, verify2FA);
