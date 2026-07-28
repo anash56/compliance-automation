@@ -17,7 +17,7 @@ import invoiceRoutes from './routes/invoices';
 import gstRoutes from './routes/gst';
 import tdsRoutes from './routes/tds';
 import companyRoutes from './routes/companies';
-import { startComplianceCron } from './routes/complianceCron';
+import { startComplianceCron } from './services/cronService';
 
 const app: Express = express();
 const PORT = process.env.PORT || 5000;
@@ -68,7 +68,7 @@ app.use((_req: Request, res: Response) => {
   res.status(404).json({ error: 'Route not found' });
 });
 
-// Global Error handler middleware (Decoupled from server.ts)
+// Global Error handler middleware
 app.use(errorHandler);
 
 // Start Background Jobs
