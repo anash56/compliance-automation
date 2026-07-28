@@ -5,10 +5,10 @@ dotenv.config();
 
 import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
-import { PrismaClient } from '@prisma/client';
 
 // @ts-ignore
 import cookieParser from 'cookie-parser';
+import { prisma } from './config/db';
 import { errorHandler } from './middleware/errorHandler';
 
 // Import routes
@@ -24,9 +24,6 @@ const PORT = process.env.PORT || 5000;
 
 // Trust exactly 1 proxy (Crucial for Vercel -> Render proxying so Rate Limiter doesn't block everyone)
 app.set('trust proxy', 1);
-
-// Export prisma for use in other files
-export const prisma = new PrismaClient();
 
 // Middleware
 const allowedOrigins = process.env.FRONTEND_URL ? [process.env.FRONTEND_URL, 'http://localhost:5173'] : true;
@@ -80,6 +77,9 @@ process.on('SIGINT', async () => {
   await prisma.$disconnect();
   process.exit(0);
 });
+
+// Export prisma for legacy backwards compatibility
+export { prisma };
 
 // Start server
 app.listen(PORT, () => {
