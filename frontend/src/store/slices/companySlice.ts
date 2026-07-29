@@ -1,8 +1,11 @@
+// src/store/slices/companySlice.ts
+
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { logout } from './authSlice';
+import { Company } from '../../types';
 
 interface CompanyState {
-  companies: any[];
+  companies: Company[];
   selectedCompanyId: string | null;
 }
 
@@ -15,7 +18,7 @@ const companySlice = createSlice({
   name: 'company',
   initialState,
   reducers: {
-    setCompanies: (state, action: PayloadAction<any[]>) => {
+    setCompanies: (state, action: PayloadAction<Company[]>) => {
       state.companies = action.payload;
 
       if (
@@ -31,12 +34,12 @@ const companySlice = createSlice({
         localStorage.setItem('selectedCompanyId', action.payload[0].id);
       }
     },
-    addCompany: (state, action: PayloadAction<any>) => {
+    addCompany: (state, action: PayloadAction<Company>) => {
       state.companies = [action.payload, ...state.companies];
       state.selectedCompanyId = action.payload.id;
       localStorage.setItem('selectedCompanyId', action.payload.id);
     },
-    updateCompany: (state, action: PayloadAction<any>) => {
+    updateCompany: (state, action: PayloadAction<Company>) => {
       state.companies = state.companies.map((company) =>
         company.id === action.payload.id ? action.payload : company
       );
