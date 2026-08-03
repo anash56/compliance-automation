@@ -1,7 +1,6 @@
 // src/controllers/gstController.ts
 
 import { Request, Response } from 'express';
-import { prisma } from '../server';
 import gstService from '../services/gstService';
 
 export const generateGSTR1 = async (req: Request, res: Response) => {
@@ -75,15 +74,6 @@ export const markGSTR1Filed = async (req: Request, res: Response) => {
     await gstService.saveGSTReturn(companyId, month, year, gstr1, gstr3b);
     const gstReturn = await gstService.markAsFiledGSTR1(companyId, month, year);
 
-    try {
-      if ((prisma as any).complianceTask) {
-        await (prisma as any).complianceTask.updateMany({
-          where: { companyId, type: 'GST Filing', month, year },
-          data: { status: 'completed' }
-        });
-      }
-    } catch(e) {}
-
     res.json({
       success: true,
       message: 'GSTR-1 marked as filed',
@@ -108,15 +98,6 @@ export const markGSTR3BFiled = async (req: Request, res: Response) => {
     await gstService.saveGSTReturn(companyId, month, year, gstr1, gstr3b);
     const gstReturn = await gstService.markAsFiledGSTR3B(companyId, month, year);
 
-    try {
-      if ((prisma as any).complianceTask) {
-        await (prisma as any).complianceTask.updateMany({
-          where: { companyId, type: 'GST Payment', month, year },
-          data: { status: 'completed' }
-        });
-      }
-    } catch(e) {}
-
     res.json({
       success: true,
       message: 'GSTR-3B marked as filed',
@@ -131,35 +112,11 @@ export const markGSTR3BFiled = async (req: Request, res: Response) => {
 export const getGstDashboardStats = async (req: Request, res: Response) => {
   try {
     const { companyId } = req.params;
-
-    const invoiceCount = await prisma.invoice.count({
-      where: { companyId }
-    });
-
-    const invoices = await prisma.invoice.findMany({
-      where: { companyId }
-    });
-
-    const totalTax = invoices.reduce((sum: number, i) => sum + Number(i.totalTax), 0);
-
-    const gstReturns = await prisma.gSTReturn.findMany({
-      where: { companyId }
-    });
-
-    const filedCount = gstReturns.reduce((count: number, gstReturn) => {
-      return count + 
-        (gstReturn.gstr1Status === 'submitted' || gstReturn.gstr1FiledDate ? 1 : 0) +
-        (gstReturn.gstr3bStatus === 'submitted' || gstReturn.gstr3bFiledDate ? 1 : 0);
-    }, 0);
+    const stats = await gstService.getDashboardStats(companyId);
 
     res.json({
       success: true,
-      stats: {
-        totalInvoices: invoiceCount,
-        totalTax: Math.round(totalTax * 100) / 100,
-        gstReturnsFiledCount: filedCount,
-        gstReturnsDraftCount: (gstReturns.length * 2) - filedCount
-      }
+      stats
     });
   } catch (error) {
     console.error('Dashboard stats error:', error);

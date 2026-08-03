@@ -1,6 +1,8 @@
 // src/services/companyService.ts
 
 import { prisma } from '../server';
+import { sendEmail, isEmailConfigured } from './emailService';
+import { getWorkspaceInvitationTemplate } from '../utils/emailTemplates';
 
 export const getUserCompanies = async (userId: string) => {
   const memberships = await prisma.companyMember.findMany({
@@ -26,7 +28,14 @@ export const getUserCompanies = async (userId: string) => {
 };
 
 export const registerCompany = async (userId: string, data: { companyName: string; state: string; gstNumber?: string | null; pan?: string | null }) => {
-  return await prisma.company.create({
+  if (data.gstNumber) {
+    const existingGst = await findCompanyByGstNumber(data.gstNumber);
+    if (existingGst) {
+      return { success: false, error: 'A company with this GST number already exists' };
+    }
+  }
+
+  const company = await prisma.company.create({
     data: {
       userId,
       companyName: data.companyName,
@@ -42,6 +51,8 @@ export const registerCompany = async (userId: string, data: { companyName: strin
       }
     }
   });
+
+  return { success: true, company };
 };
 
 export const getCompanyWithMembership = async (companyId: string, userId: string) => {
@@ -177,3 +188,66 @@ export const compileDashboardStats = async (companyId: string, year: number) => 
     auditLogs
   };
 };
+
+export const findCompanyByGstNumber = async (gstNumber: string) => {
+  return await prisma.company.findUnique({
+    where: { gstNumber: gstNumber.trim().toUpperCase() }
+  });
+};
+
+export const inviteWorkspaceMember = async (companyId: string, email: string, role: string) => {
+  const targetUser = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+  if (!targetUser) {
+    return { success: false, error: 'User not found. They must create an account first.', notFound: true };
+  }
+
+  const company = await prisma.company.findUnique({ where: { id: companyId } });
+
+  const existingMember = await prisma.companyMember.findUnique({
+    where: { userId_companyId: { userId: targetUser.id, companyId } }
+  });
+  if (existingMember) {
+    return { success: false, error: 'User is already a member of this workspace.' };
+  }
+
+  const newMember = await prisma.companyMember.create({
+    data: { userId: targetUser.id, companyId, role: role || 'VIEWER', status: 'ACTIVE' }
+  });
+
+  if (isEmailConfigured && targetUser && company) {
+    const emailHtml = getWorkspaceInvitationTemplate(targetUser.fullName, company.companyName, role);
+
+    sendEmail({
+      to: targetUser.email,
+      subject: `Invitation: Join ${company.companyName} on ComplianceBot`,
+      html: emailHtml,
+    }).catch(err => console.error('Email notification failed:', err));
+  }
+
+  return { success: true, member: newMember };
+};
+
+export const removeWorkspaceMemberByUserId = async (companyId: string, userId: string) => {
+  const member = await prisma.companyMember.findUnique({
+    where: { userId_companyId: { userId, companyId } }
+  });
+
+  if (!member) {
+    return { success: false, error: 'Member not found in this workspace', notFound: true };
+  }
+
+  if (member.role === 'OWNER') {
+    return { success: false, error: 'Cannot remove the primary workspace owner' };
+  }
+
+  await prisma.companyMember.delete({ where: { id: member.id } });
+  return { success: true };
+};
+
+export const updateTaskStatus = async (taskId: string, status: string) => {
+  return await (prisma as any).complianceTask.update({
+    where: { id: taskId },
+    data: { status }
+  });
+};
+

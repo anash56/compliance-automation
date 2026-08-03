@@ -3,6 +3,7 @@
 import cron from 'node-cron';
 import { prisma } from '../server';
 import { sendEmail, isEmailConfigured } from './emailService';
+import { getComplianceReminderTemplate } from '../utils/emailTemplates';
 
 export const startComplianceCron = () => {
   // Run every day at 08:00 AM
@@ -58,18 +59,12 @@ export const startComplianceCron = () => {
           const hasOverdue = urgentDeadlines.some((d: any) => new Date(d.date) < todayZero);
           const subjectHeader = hasOverdue ? '🚨 OVERDUE COMPLIANCE WARNING' : '⚠️ Urgent Action Required';
 
-          const emailHtml = `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #1f2937;">
-              <h2 style="color: #dc2626; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">${subjectHeader}</h2>
-              <p>Hello <strong>${member.user.fullName}</strong>,</p>
-              <p>You have urgent pending compliance filings for <strong>${company.companyName}</strong>:</p>
-              <ul style="list-style-type: none; padding: 0;">
-                ${deadlinesHtml}
-              </ul>
-              <br/>
-              <p>Please ensure these are filed immediately to stop incurring late interest & government penalties.</p>
-            </div>
-          `;
+          const emailHtml = getComplianceReminderTemplate(
+            member.user.fullName,
+            company.companyName,
+            subjectHeader,
+            deadlinesHtml
+          );
 
           if (isEmailConfigured) {
             await sendEmail({

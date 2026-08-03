@@ -3,7 +3,6 @@
 import { Request, Response } from 'express';
 import Joi from 'joi';
 import tdsService, { TDS_RATES, TDSCategory } from '../services/tdsService';
-import { prisma } from '../server';
 
 const tdsCategories = Object.keys(TDS_RATES);
 const panPattern = /^[A-Z]{5}[0-9]{4}[A-Z]$/i;
@@ -69,38 +68,11 @@ export const createTDSRecord = async (req: Request, res: Response) => {
       paymentAmount,
       category: category as TDSCategory,
       quarter,
-      year
+      year,
+      userId: (req as any).userId
     });
 
     const tdsDeducted = tdsService.calculateTDS(paymentAmount, category);
-
-    try {
-      if ((prisma as any).complianceTask) {
-        const qTaskExists = await (prisma as any).complianceTask.findFirst({ where: { companyId, type: 'TDS Return', quarter, year } });
-        if (!qTaskExists) {
-          let dueDate = new Date();
-          if (quarter === 1) dueDate = new Date(year, 6, 31);
-          else if (quarter === 2) dueDate = new Date(year, 9, 31);
-          else if (quarter === 3) dueDate = new Date(year + 1, 0, 31);
-          else if (quarter === 4) dueDate = new Date(year + 1, 4, 31);
-          await (prisma as any).complianceTask.create({ data: { companyId, type: 'TDS Return', desc: `Form 26Q (Q${quarter} FY${year}-${String(year + 1).slice(2)})`, date: dueDate, color: 'purple', status: 'pending', quarter, year } });
-        }
-        const m = date.getMonth() + 1;
-        const calYear = date.getFullYear();
-        const nextM = m === 12 ? 1 : m + 1;
-        const nextY = m === 12 ? calYear + 1 : calYear;
-        const monthName = date.toLocaleString('default', { month: 'short' });
-        const pTaskExists = await (prisma as any).complianceTask.findFirst({ where: { companyId, type: 'TDS Payment', month: m, year: calYear } });
-        if (!pTaskExists) {
-          await (prisma as any).complianceTask.create({ data: { companyId, type: 'TDS Payment', desc: `TDS Payment (${monthName} ${calYear})`, date: new Date(nextY, nextM - 1, 7), color: 'red', status: 'pending', month: m, year: calYear } });
-        }
-      }
-      if ((prisma as any).auditLog) {
-        await (prisma as any).auditLog.create({
-          data: { companyId, userId: (req as any).userId, action: 'CREATE_TDS', details: `Recorded TDS payment for ${vendorName} (INR ${paymentAmount})` }
-        });
-      }
-    } catch(e) { console.warn('Task/Audit skipped'); }
 
     res.status(201).json({
       success: true,
@@ -122,7 +94,7 @@ export const updateTDSRecord = async (req: Request, res: Response) => {
     const { id } = req.params;
     const { vendorName, vendorPan, paymentDate, paymentAmount, category } = req.body;
 
-    if (Number(paymentAmount) <= 0) {
+    if (paymentAmount !== undefined && Number(paymentAmount) <= 0) {
       return res.status(400).json({ error: 'Payment amount must be greater than 0' });
     }
 
@@ -130,49 +102,29 @@ export const updateTDSRecord = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Invalid Vendor PAN format' });
     }
 
-    const record = await prisma.tDSRecord.findUnique({ where: { id } });
-    if (!record) return res.status(404).json({ error: 'TDS record not found' });
-
-    const membership = await prisma.companyMember.findUnique({
-      where: { userId_companyId: { userId: (req as any).userId, companyId: record.companyId } },
-    });
-    if (!membership || !['OWNER', 'ADMIN', 'EDITOR'].includes(membership.role)) {
-      return res.status(403).json({ error: 'You do not have permission to edit this record.' });
-    }
-
     const date = new Date(paymentDate);
     const quarter = getFinancialQuarter(date);
     const year = getFinancialYear(date);
+    const userId = (req as any).userId;
 
-    const rate = TDS_RATES[category as TDSCategory] || 10;
-    const tdsDeducted = (Number(paymentAmount) * rate) / 100;
-    const paymentMade = Number(paymentAmount) - tdsDeducted;
-
-    const updatedRecord = await prisma.tDSRecord.update({
-      where: { id },
-      data: {
-        vendorName,
-        vendorPan: vendorPan || null,
-        paymentDate: date,
-        paymentAmount: Number(paymentAmount),
-        category,
-        quarter,
-        year,
-        tdsRate: rate,
-        tdsDeducted,
-        paymentMade
-      }
+    const result = await tdsService.updateTDSRecord(id, {
+      vendorName,
+      vendorPan: vendorPan || null,
+      paymentDate: date,
+      paymentAmount: Number(paymentAmount),
+      category: category as TDSCategory,
+      quarter,
+      year,
+      userId
     });
 
-    try {
-      if ((prisma as any).auditLog) {
-        await (prisma as any).auditLog.create({
-          data: { companyId: record.companyId, userId: (req as any).userId, action: 'UPDATE_TDS', details: `Updated TDS payment for ${vendorName}` }
-        });
-      }
-    } catch(e) {}
+    if (!result.success) {
+      if (result.notFound) return res.status(404).json({ error: result.error });
+      if (result.forbidden) return res.status(403).json({ error: result.error });
+      return res.status(400).json({ error: result.error });
+    }
 
-    res.json({ success: true, record: updatedRecord });
+    res.json({ success: true, record: result.record });
   } catch (error) {
     console.error('Update TDS record error:', error);
     res.status(500).json({ error: 'Failed to update TDS record' });
@@ -182,34 +134,15 @@ export const updateTDSRecord = async (req: Request, res: Response) => {
 export const deleteTDSRecord = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    const userId = (req as any).userId;
 
-    const record = await prisma.tDSRecord.findUnique({
-      where: { id },
-      select: { companyId: true, vendorName: true },
-    });
+    const result = await tdsService.deleteTDSRecord(id, userId);
 
-    if (!record) {
-      return res.status(404).json({ error: 'TDS record not found' });
+    if (!result.success) {
+      if (result.notFound) return res.status(404).json({ error: result.error });
+      if (result.forbidden) return res.status(403).json({ error: result.error });
+      return res.status(400).json({ error: result.error });
     }
-
-    const membership = await prisma.companyMember.findUnique({
-      where: { userId_companyId: { userId: (req as any).userId, companyId: record.companyId } },
-    });
-
-    if (!membership || !['OWNER', 'ADMIN', 'EDITOR'].includes(membership.role)) {
-      return res.status(403).json({ error: 'You do not have permission to delete this record.' });
-    }
-    await prisma.tDSRecord.delete({
-      where: { id }
-    });
-
-    try {
-      if ((prisma as any).auditLog) {
-        await (prisma as any).auditLog.create({
-          data: { companyId: record.companyId, userId: (req as any).userId, action: 'DELETE_TDS', details: `Deleted TDS payment for ${record.vendorName}` }
-        });
-      }
-    } catch(e) {}
 
     res.json({
       success: true,
@@ -258,24 +191,27 @@ export const getTDSRecords = async (req: Request, res: Response) => {
 export const generateForm26Q = async (req: Request, res: Response) => {
   try {
     const { value, error: validationError } = periodSchema.validate(req.body, {
-      abortEarly: false,
-      stripUnknown: true
+      abortEarly: false
     });
 
     if (validationError) {
       return res.status(400).json({
-        error: 'Invalid Form 26Q period',
+        error: 'Invalid request payload',
         details: validationError.details.map((detail) => detail.message)
       });
     }
 
     const { companyId, quarter, year } = value;
 
-    const form26q = await tdsService.generateForm26Q(companyId, quarter, year);
+    const form26Q = await tdsService.generateForm26Q(
+      companyId,
+      quarter,
+      year
+    );
 
     res.json({
       success: true,
-      form26q
+      form26Q
     });
   } catch (error) {
     console.error('Generate Form 26Q error:', error);
@@ -283,43 +219,36 @@ export const generateForm26Q = async (req: Request, res: Response) => {
   }
 };
 
-export const saveForm26Q = async (req: Request, res: Response) => {
+export const saveTDSReturn = async (req: Request, res: Response) => {
   try {
-    const { value, error: validationError } = periodSchema.keys({
-      totalTdsDeposited: Joi.number().min(0).precision(2)
-    }).validate(req.body, {
-      abortEarly: false,
-      stripUnknown: true
-    });
+    const { companyId, quarter, year, totalTdsDeposited } = req.body;
 
-    if (validationError) {
+    if (!companyId || !quarter || !year || totalTdsDeposited === undefined) {
       return res.status(400).json({
-        error: 'Invalid Form 26Q save request',
-        details: validationError.details.map((detail) => detail.message)
+        error: 'Company ID, quarter, year, and total TDS deposited are required'
       });
     }
 
-    const { companyId, quarter, year, totalTdsDeposited } = value;
-
-    const form26q = await tdsService.generateForm26Q(companyId, quarter, year);
+    const form26Q = await tdsService.generateForm26Q(companyId, quarter, year);
     const tdsReturn = await tdsService.saveTDSReturn(
       companyId,
       quarter,
       year,
-      form26q,
-      Number(totalTdsDeposited) || form26q.totalTdsDeducted
+      form26Q,
+      Number(totalTdsDeposited)
     );
 
     res.json({
       success: true,
-      form26q,
       tdsReturn
     });
   } catch (error) {
-    console.error('Save Form 26Q error:', error);
-    res.status(500).json({ error: 'Failed to save Form 26Q' });
+    console.error('Save TDS return error:', error);
+    res.status(500).json({ error: 'Failed to save TDS return' });
   }
 };
+
+export const saveForm26Q = saveTDSReturn;
 
 export const getTDSReturns = async (req: Request, res: Response) => {
   try {
@@ -339,33 +268,26 @@ export const getTDSReturns = async (req: Request, res: Response) => {
 export const markForm26QFiled = async (req: Request, res: Response) => {
   try {
     const { value, error: validationError } = periodSchema.validate(req.body, {
-      abortEarly: false,
-      stripUnknown: true
+      abortEarly: false
     });
 
     if (validationError) {
       return res.status(400).json({
-        error: 'Invalid Form 26Q filed request',
+        error: 'Invalid request payload',
         details: validationError.details.map((detail) => detail.message)
       });
     }
 
     const { companyId, quarter, year } = value;
 
-    const form26q = await tdsService.generateForm26Q(companyId, quarter, year);
-    await tdsService.saveTDSReturn(
+    const form26Q = await tdsService.generateForm26Q(companyId, quarter, year);
+    await tdsService.saveTDSReturn(companyId, quarter, year, form26Q, form26Q.totalTdsDeducted);
+
+    const tdsReturn = await tdsService.markForm26QAsFiled(
       companyId,
       quarter,
-      year,
-      form26q,
-      form26q.totalTdsDeducted
+      year
     );
-    const tdsReturn = await tdsService.markForm26QAsFiled(companyId, quarter, year);
-
-    await (prisma as any).complianceTask.updateMany({
-      where: { companyId, type: 'TDS Return', quarter, year },
-      data: { status: 'completed' }
-    });
 
     res.json({
       success: true,
@@ -374,11 +296,11 @@ export const markForm26QFiled = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Mark Form 26Q filed error:', error);
-    res.status(500).json({ error: 'Failed to update filing status' });
+    res.status(500).json({ error: 'Failed to update Form 26Q filing status' });
   }
 };
 
-export const getTdsDashboardStats = async (req: Request, res: Response) => {
+export const getTDSDashboardStats = async (req: Request, res: Response) => {
   try {
     const { companyId } = req.params;
     const stats = await tdsService.getDashboardStats(companyId);
@@ -388,7 +310,9 @@ export const getTdsDashboardStats = async (req: Request, res: Response) => {
       stats
     });
   } catch (error) {
-    console.error('Dashboard stats error:', error);
-    res.status(500).json({ error: 'Failed to fetch dashboard stats' });
+    console.error('Get TDS dashboard stats error:', error);
+    res.status(500).json({ error: 'Failed to fetch TDS dashboard stats' });
   }
 };
+
+export const getTdsDashboardStats = getTDSDashboardStats;
