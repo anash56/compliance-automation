@@ -6,6 +6,7 @@ const API_URL = import.meta.env.MODE === 'production' ? '/api' : 'http://localho
 export const api = axios.create({
   baseURL: API_URL,
   withCredentials: true,
+  timeout: 10000, // ⏱️ 10-second timeout to prevent UI freeze during cold starts
   headers: {
     'Content-Type': 'application/json'
   }
