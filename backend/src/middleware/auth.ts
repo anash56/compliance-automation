@@ -10,8 +10,7 @@ const auth = (req: Request, res: Response, next: NextFunction) => {
       return res.status(500).json({ error: 'JWT secret is not configured' });
     }
 
-    // Look for token in cookies first, fallback to header for testing
-    const token = req.cookies?.token || req.header('Authorization')?.replace('Bearer ', '');
+    const token = req.cookies?.token;
 
     if (!token) {
       return res.status(401).json({ error: 'No token provided' });

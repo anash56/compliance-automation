@@ -1,22 +1,10 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import axios from 'axios';
- 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
- 
-const getAuthHeader = () => ({
-  headers: {
-    Authorization: `Bearer ${localStorage.getItem('token')}`
-  }
-});
+import api from '../../services/api';
  
 export const createInvoice = createAsyncThunk(
   'invoice/create',
   async (data: any) => {
-    const response = await axios.post(
-      `${API_URL}/invoices`,
-      data,
-      getAuthHeader()
-    );
+    const response = await api.post('/invoices', data);
     return response.data;
   }
 );
@@ -28,10 +16,7 @@ export const fetchInvoices = createAsyncThunk(
     if (month) params.append('month', String(month));
     if (year) params.append('year', String(year));
  
-    const response = await axios.get(
-      `${API_URL}/invoices/${companyId}?${params}`,
-      getAuthHeader()
-    );
+    const response = await api.get(`/invoices/${companyId}?${params}`);
     return response.data;
   }
 );

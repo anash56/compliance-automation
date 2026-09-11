@@ -1,22 +1,10 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import axios from 'axios';
- 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
- 
-const getAuthHeader = () => ({
-  headers: {
-    Authorization: `Bearer ${localStorage.getItem('token')}`
-  }
-});
+import api from '../../services/api';
  
 export const generateGSTR1 = createAsyncThunk(
   'gst/generateGSTR1',
   async ({ companyId, month, year }: any) => {
-    const response = await axios.post(
-      `${API_URL}/gst/gstr1/generate`,
-      { companyId, month, year },
-      getAuthHeader()
-    );
+    const response = await api.post('/gst/gstr1/generate', { companyId, month, year });
     return response.data;
   }
 );
@@ -24,11 +12,7 @@ export const generateGSTR1 = createAsyncThunk(
 export const generateGSTR3B = createAsyncThunk(
   'gst/generateGSTR3B',
   async ({ companyId, month, year }: any) => {
-    const response = await axios.post(
-      `${API_URL}/gst/gstr3b/generate`,
-      { companyId, month, year },
-      getAuthHeader()
-    );
+    const response = await api.post('/gst/gstr3b/generate', { companyId, month, year });
     return response.data;
   }
 );
@@ -36,10 +20,7 @@ export const generateGSTR3B = createAsyncThunk(
 export const fetchGSTReturns = createAsyncThunk(
   'gst/fetchReturns',
   async (companyId: string) => {
-    const response = await axios.get(
-      `${API_URL}/gst/returns/${companyId}`,
-      getAuthHeader()
-    );
+    const response = await api.get(`/gst/returns/${companyId}`);
     return response.data;
   }
 );

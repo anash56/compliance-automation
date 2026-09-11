@@ -12,18 +12,6 @@ export const api = axios.create({
   }
 });
 
-// Add a request interceptor to include the token from localStorage
-api.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      config.headers['Authorization'] = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
-
 let isRefreshing = false;
 let failedQueue: any[] = [];
 
@@ -65,19 +53,12 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const refreshRes = await api.post('/auth/refresh');
-        if (refreshRes.data?.token) {
-          localStorage.setItem('token', refreshRes.data.token);
-        }
+        await api.post('/auth/refresh');
         isRefreshing = false;
         processQueue(null);
         return api(originalRequest);
       } catch (err) {
         isRefreshing = false;
-        localStorage.removeItem('token');
-        document.cookie = "token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-        document.cookie = "refreshToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-
         processQueue(err);
         return Promise.reject(err);
       }

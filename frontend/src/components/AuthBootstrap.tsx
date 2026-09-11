@@ -8,6 +8,7 @@ export default function AuthBootstrap({ children }: { children: React.ReactNode 
   const dispatch = useDispatch<AppDispatch>();
 
   useEffect(() => {
+    localStorage.removeItem('token');
     dispatch(fetchCurrentUser());
   }, [dispatch]);
 

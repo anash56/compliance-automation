@@ -10,14 +10,16 @@ const setAuthCookies = (res: Response, token: string, refreshToken: string, reme
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-    maxAge: 15 * 60 * 1000
+    maxAge: 15 * 60 * 1000,
+    path: '/'
   });
 
   res.cookie('refreshToken', refreshToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-    maxAge: rememberMe ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000
+    maxAge: rememberMe ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000,
+    path: '/'
   });
 };
 
@@ -25,12 +27,14 @@ const clearAuthCookies = (res: Response) => {
   res.clearCookie('token', {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    path: '/'
   });
   res.clearCookie('refreshToken', {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    path: '/'
   });
 };
 
@@ -81,7 +85,6 @@ export const login = async (req: Request, res: Response) => {
 
     res.json({
       success: true,
-      token,
       user: {
         id: user.id,
         email: user.email,
@@ -108,7 +111,6 @@ export const verify2FA = async (req: Request, res: Response) => {
 
     res.json({
       success: true,
-      token: result.token,
       user: { id: result.user.id, email: result.user.email, fullName: result.user.fullName, role: result.user.role, isTwoFactorEnabled: result.user.isTwoFactorEnabled }
     });
   } catch (error) {
@@ -180,10 +182,11 @@ export const refreshToken = async (req: Request, res: Response) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-      maxAge: 15 * 60 * 1000
+      maxAge: 15 * 60 * 1000,
+      path: '/'
     });
 
-    res.json({ success: true, token: result.token });
+    res.json({ success: true });
   } catch (error) {
     res.status(401).json({ error: 'Invalid or expired refresh token' });
   }
@@ -281,7 +284,6 @@ export const handleOAuthCallback = async (req: Request, res: Response) => {
 
     res.json({
       success: true,
-      token: result.token,
       user: { id: result.user!.id, email: result.user!.email, fullName: result.user!.fullName, role: result.user!.role, isTwoFactorEnabled: result.user!.isTwoFactorEnabled }
     });
   } catch (error: any) {
